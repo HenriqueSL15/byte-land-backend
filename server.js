@@ -18,7 +18,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: "https://cdn-icons-png.flaticon.com/512/711/711769.png",
   },
-  createdAt: { type: Date, default: Date.now },
+  createdAt: {
+    type: Date,
+    default: Date.now(),
+  },
 });
 
 //Modelo do usuário
@@ -82,7 +85,23 @@ app.get("/", (req, res) => {
   res.send("Backend rodando!");
 });
 
-// Rota para receber dados via POST
+app.delete("/deletePublication", async (req, res) => {
+  try {
+    const { owner, id } = req.body;
+    const publication = await Publication.findOne({ _id: id });
+    console.log(publication);
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    await Publication.deleteOne({ _id: id });
+    res.status(200).json({ message: "Publicação deletada com sucesso" });
+  } catch (error) {
+    res.status(500).json({ error: error });
+  }
+});
+
+// Rota para receber as publicações
 app.post("/publications", upload.single("image"), async (req, res) => {
   try {
     const { owner, title, description } = req.body;
@@ -105,6 +124,7 @@ app.post("/publications", upload.single("image"), async (req, res) => {
   }
 });
 
+// Rota para buscar publicações
 app.get("/getPublications", async (req, res) => {
   try {
     const publications = await Publication.find();
@@ -115,6 +135,7 @@ app.get("/getPublications", async (req, res) => {
   }
 });
 
+//Rota de Login
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -135,6 +156,7 @@ app.post("/login", async (req, res) => {
   }
 });
 
+//Rota de cadastro
 app.post("/signup", async (req, res) => {
   //Criação do perfil no banco de dados
   try {
@@ -144,6 +166,18 @@ app.post("/signup", async (req, res) => {
       email: email,
       password: password,
     });
+
+    const emailExists = await User.findOne({ email: email });
+    const userExists = await User.findOne({ name: user });
+    if (emailExists && userExists) {
+      return res.json({
+        message: "Este nome de usuário e e-mail já estão em uso.",
+      });
+    } else if (emailExists && !userExists) {
+      return res.json({ message: "Esse e-mail já está em uso." });
+    } else if (!emailExists && userExists) {
+      return res.json({ message: "Esse nome de usuário já está em uso." });
+    }
 
     await newUser.save();
     res
