@@ -143,9 +143,8 @@ app.post("/login", async (req, res) => {
     const user = await User.findOne({ email: email, password: password });
 
     if (!user) {
-      return res
-        .status(404)
-        .json({ message: "O email ou a senha estão incorretos!" });
+      return res.status(404).json({ message: "Esse usuário não existe." });
+    } else {
     }
 
     res
