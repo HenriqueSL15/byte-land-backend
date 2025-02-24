@@ -85,16 +85,64 @@ app.get("/", (req, res) => {
   res.send("Backend rodando!");
 });
 
-app.delete("/deletePublication", async (req, res) => {
+app.put("/editPublication", upload.single("image"), async (req, res) => {
   try {
-    const { owner, id } = req.body;
+    const { owner, id, title, description } = req.body;
+    let imagePath = null;
+
+    // Verifica se um arquivo de imagem foi enviado
+    if (req.file) {
+      // Salva o caminho do arquivo no banco de dados
+      imagePath = req.file.path;
+    }
+
+    // Encontra a publicação no banco de dados
     const publication = await Publication.findOne({ _id: id });
-    console.log(publication);
+
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
     }
 
-    await Publication.deleteOne({ _id: id });
+    // Atualiza os campos da publicação
+    if (title.replaceAll(" ", "") != "" && title != null) {
+      publication.title = title;
+    } else {
+      return res.status(404).json({ message: "Título não pode ser vazio" });
+    }
+
+    if (description.replaceAll(" ", "") != "" && description != null) {
+      publication.description = description;
+    } else {
+      return res.status(404).json({ message: "Descrição não pode ser vazia" });
+    }
+
+    // Se uma nova imagem foi fornecida, atualiza o campo de imagem
+    if (imagePath) {
+      publication.image = imagePath;
+    }
+
+    // Salva as alterações no banco de dados
+    await publication.save();
+
+    res.status(200).json({
+      message: "Publicação editada com sucesso",
+      publication: publication,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/deletePublication", async (req, res) => {
+  try {
+    const { owner, id } = req.body;
+    const publication = await Publication.findOneAndDelete({ _id: id });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    // await Publication.deleteOne({ _id: id });
     res.status(200).json({ message: "Publicação deletada com sucesso" });
   } catch (error) {
     res.status(500).json({ error: error });
