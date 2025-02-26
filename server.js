@@ -34,6 +34,13 @@ const publicationSchema = new mongoose.Schema({
   description: { type: String, required: true },
   image: { type: String },
   createdAt: { type: Date, default: Date.now },
+  comments: [
+    {
+      owner: String,
+      comment: String,
+      createdAt: { type: Date, default: Date.now },
+    },
+  ],
 });
 
 //Modelo da pulicação
@@ -85,6 +92,7 @@ app.get("/", (req, res) => {
   res.send("Backend rodando!");
 });
 
+//Rota para editar uma publicação
 app.put("/editPublication", upload.single("image"), async (req, res) => {
   try {
     const { owner, id, title, description } = req.body;
@@ -133,6 +141,7 @@ app.put("/editPublication", upload.single("image"), async (req, res) => {
   }
 });
 
+//Rota para deletar publicação
 app.delete("/deletePublication", async (req, res) => {
   try {
     const { owner, id } = req.body;
@@ -149,6 +158,53 @@ app.delete("/deletePublication", async (req, res) => {
   }
 });
 
+//Rota para obter todas os comentários de uma publicação
+app.post("/getComments", async (req, res) => {
+  const { id } = req.body.data;
+  try {
+    const publication = await Publication.findOne({ _id: id });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    res.status(200).json({ comments: publication.comments });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//Rota para adicionar comentários em uma publicação
+app.post("/addComment", async (req, res) => {
+  try {
+    const { user, id, comment } = req.body.data;
+
+    const publication = await Publication.findOne({ _id: id });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    const newComment = {
+      owner: user,
+      comment: comment,
+      createdAt: Date.now(),
+    };
+
+    if (!user || !comment) {
+      return res.status(404).json({ message: "Comentário não pode ser vazio" });
+    }
+
+    publication.comments.push(newComment);
+
+    await publication.save();
+
+    res.status(200).json({ message: "Comentário adicionado com sucesso" });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
 // Rota para receber as publicações
 app.post("/publications", upload.single("image"), async (req, res) => {
   try {
@@ -160,6 +216,7 @@ app.post("/publications", upload.single("image"), async (req, res) => {
       title: title,
       description: description,
       image: image,
+      comments: [],
     });
 
     await newPublication.save();
@@ -172,6 +229,33 @@ app.post("/publications", upload.single("image"), async (req, res) => {
   }
 });
 
+//Rota para deletar comentários de publicações
+app.post("/deleteComment", async (req, res) => {
+  try {
+    console.log("Estou deletando");
+    const { publicationId, commentId } = req.body.data;
+
+    const publication = await Publication.findOne({ _id: publicationId });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    const commentIndex = publication.comments.findIndex(
+      (comment) => comment._id.toString() === commentId
+    );
+    console.log(commentIndex);
+
+    if (commentIndex !== -1) {
+      publication.comments.splice(commentIndex, 1);
+
+      await publication.save();
+      res.status(200).json({ message: "Comentário deletado com sucesso" });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+});
 // Rota para buscar publicações
 app.get("/getPublications", async (req, res) => {
   try {
@@ -192,7 +276,6 @@ app.post("/login", async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ message: "Esse usuário não existe." });
-    } else {
     }
 
     res
