@@ -94,6 +94,7 @@ app.get("/", (req, res) => {
 
 //Rota para editar uma publicação
 app.put("/editPublication", upload.single("image"), async (req, res) => {
+  console.log(req.body);
   try {
     const { owner, id, title, description } = req.body;
     let imagePath = null;
@@ -127,6 +128,8 @@ app.put("/editPublication", upload.single("image"), async (req, res) => {
     // Se uma nova imagem foi fornecida, atualiza o campo de imagem
     if (imagePath) {
       publication.image = imagePath;
+    } else if (imagePath == null) {
+      publication.image = null;
     }
 
     // Salva as alterações no banco de dados
