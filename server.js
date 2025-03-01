@@ -3,6 +3,7 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 const app = express();
 const port = 3000;
 
@@ -11,7 +12,7 @@ const uri =
 
 //Esquema do usuário
 const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  name: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   image: {
@@ -59,7 +60,7 @@ mongoose
     console.error("Erro na conexão com o banco de dados:", err);
   });
 
-// Configuração do CORS
+//Configuração do CORS
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -68,7 +69,13 @@ app.use(
   })
 );
 
-// Configuração do Multer para upload de arquivos
+// Verificar senha
+async function verifyPassword(password, hash) {
+  const match = await bcrypt.compare(password, hash);
+  return match;
+}
+
+//Configuração do Multer para upload de arquivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/"); // Pasta onde os arquivos serão salvos
@@ -80,16 +87,142 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Configura o diretório de uploads para servir arquivos estáticos
+//Configura o diretório de uploads para servir arquivos estáticos
 const uploadsPath = path.join(__dirname, "uploads");
 app.use("/uploads", express.static(uploadsPath));
 
-// Middleware para permitir o uso de JSON no corpo das requisições
+//Middleware para permitir o uso de JSON no corpo das requisições
 app.use(express.json());
 
-// Rota de exemplo
+//Rota de exemplo
 app.get("/", (req, res) => {
   res.send("Backend rodando!");
+});
+
+//Rota para deletar comentários de publicações
+app.post("/deleteComment", async (req, res) => {
+  try {
+    console.log("Estou deletando");
+    const { publicationId, commentId } = req.body.data;
+
+    const publication = await Publication.findOne({ _id: publicationId });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    const commentIndex = publication.comments.findIndex(
+      (comment) => comment._id.toString() === commentId
+    );
+    console.log(commentIndex);
+
+    if (commentIndex !== -1) {
+      publication.comments.splice(commentIndex, 1);
+
+      await publication.save();
+      res.status(200).json({ message: "Comentário deletado com sucesso" });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+//Rota para obter todas os comentários de uma publicação
+app.post("/getComments", async (req, res) => {
+  const { id } = req.body.data;
+  try {
+    const publication = await Publication.findOne({ _id: id });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    res.status(200).json({ comments: publication.comments });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//Rota para adicionar comentários em uma publicação
+app.post("/addComment", async (req, res) => {
+  try {
+    const { user, id, comment } = req.body.data;
+
+    const publication = await Publication.findOne({ _id: id });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    const newComment = {
+      owner: user,
+      comment: comment,
+      createdAt: Date.now(),
+    };
+
+    if (!user || !comment) {
+      return res.status(404).json({ message: "Comentário não pode ser vazio" });
+    }
+
+    publication.comments.push(newComment);
+
+    await publication.save();
+
+    res.status(200).json({ message: "Comentário adicionado com sucesso" });
+  } catch (error) {
+    console.log(error);
+  }
+});
+//Rota para receber as publicações
+app.post("/publications", upload.single("image"), async (req, res) => {
+  try {
+    const { owner, title, description } = req.body;
+    const image = req.file ? req.file.path : null; // Caminho do arquivo de imagem
+
+    const newPublication = new Publication({
+      owner: owner,
+      title: title,
+      description: description,
+      image: image,
+      comments: [],
+    });
+
+    await newPublication.save();
+
+    console.log("Dados recebidos:", { title, description, image });
+    res.status(200).json({ message: "Publicação recebida com sucesso!" });
+  } catch (error) {
+    console.error("Erro ao processar a publicação:", error);
+    res.status(500).json({ message: "Erro interno do servidor" });
+  }
+});
+
+//Rota para deletar publicação
+app.delete("/deletePublication", async (req, res) => {
+  try {
+    const { owner, id } = req.body;
+    const publication = await Publication.findOneAndDelete({ _id: id });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    // await Publication.deleteOne({ _id: id });
+    res.status(200).json({ message: "Publicação deletada com sucesso" });
+  } catch (error) {
+    res.status(500).json({ error: error });
+  }
+});
+
+//Rota para buscar publicações
+app.get("/getPublications", async (req, res) => {
+  try {
+    const publications = await Publication.find();
+    res.json(publications);
+  } catch (error) {
+    console.error("Erro ao buscar publicações:", error);
+    res.status(500).json({ message: "Erro interno do servidor" });
+  }
 });
 
 //Rota para editar uma publicação
@@ -144,146 +277,30 @@ app.put("/editPublication", upload.single("image"), async (req, res) => {
   }
 });
 
-//Rota para deletar publicação
-app.delete("/deletePublication", async (req, res) => {
-  try {
-    const { owner, id } = req.body;
-    const publication = await Publication.findOneAndDelete({ _id: id });
-
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    // await Publication.deleteOne({ _id: id });
-    res.status(200).json({ message: "Publicação deletada com sucesso" });
-  } catch (error) {
-    res.status(500).json({ error: error });
-  }
-});
-
-//Rota para obter todas os comentários de uma publicação
-app.post("/getComments", async (req, res) => {
-  const { id } = req.body.data;
-  try {
-    const publication = await Publication.findOne({ _id: id });
-
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    res.status(200).json({ comments: publication.comments });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-//Rota para adicionar comentários em uma publicação
-app.post("/addComment", async (req, res) => {
-  try {
-    const { user, id, comment } = req.body.data;
-
-    const publication = await Publication.findOne({ _id: id });
-
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    const newComment = {
-      owner: user,
-      comment: comment,
-      createdAt: Date.now(),
-    };
-
-    if (!user || !comment) {
-      return res.status(404).json({ message: "Comentário não pode ser vazio" });
-    }
-
-    publication.comments.push(newComment);
-
-    await publication.save();
-
-    res.status(200).json({ message: "Comentário adicionado com sucesso" });
-  } catch (error) {
-    console.log(error);
-  }
-});
-
-// Rota para receber as publicações
-app.post("/publications", upload.single("image"), async (req, res) => {
-  try {
-    const { owner, title, description } = req.body;
-    const image = req.file ? req.file.path : null; // Caminho do arquivo de imagem
-
-    const newPublication = new Publication({
-      owner: owner,
-      title: title,
-      description: description,
-      image: image,
-      comments: [],
-    });
-
-    await newPublication.save();
-
-    console.log("Dados recebidos:", { title, description, image });
-    res.status(200).json({ message: "Publicação recebida com sucesso!" });
-  } catch (error) {
-    console.error("Erro ao processar a publicação:", error);
-    res.status(500).json({ message: "Erro interno do servidor" });
-  }
-});
-
-//Rota para deletar comentários de publicações
-app.post("/deleteComment", async (req, res) => {
-  try {
-    console.log("Estou deletando");
-    const { publicationId, commentId } = req.body.data;
-
-    const publication = await Publication.findOne({ _id: publicationId });
-
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    const commentIndex = publication.comments.findIndex(
-      (comment) => comment._id.toString() === commentId
-    );
-    console.log(commentIndex);
-
-    if (commentIndex !== -1) {
-      publication.comments.splice(commentIndex, 1);
-
-      await publication.save();
-      res.status(200).json({ message: "Comentário deletado com sucesso" });
-    }
-  } catch (error) {
-    console.log(error);
-  }
-});
-// Rota para buscar publicações
-app.get("/getPublications", async (req, res) => {
-  try {
-    const publications = await Publication.find();
-    res.json(publications);
-  } catch (error) {
-    console.error("Erro ao buscar publicações:", error);
-    res.status(500).json({ message: "Erro interno do servidor" });
-  }
-});
-
 //Rota de Login
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email: email, password: password });
+    const user = await User.findOne({ email: email });
 
     if (!user) {
       return res.status(404).json({ message: "Esse usuário não existe." });
     }
 
-    res
-      .status(200)
-      .json({ message: "Login realizado com sucesso!", user: user });
+    const isPasswordValid = await verifyPassword(password, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Senha incorreta" });
+    }
+
+    const userWithoutPassword = { ...user.toObject() };
+    delete userWithoutPassword.password;
+
+    res.status(200).json({
+      message: "Login realizado com sucesso!",
+      user: userWithoutPassword,
+    });
   } catch (error) {
     console.error("Erro ao processar o login:", error);
     res.status(500).json({ message: "Erro interno do servidor" });
@@ -295,11 +312,6 @@ app.post("/signup", async (req, res) => {
   //Criação do perfil no banco de dados
   try {
     const { user, email, password } = req.body;
-    const newUser = new User({
-      name: user,
-      email: email,
-      password: password,
-    });
 
     const emailExists = await User.findOne({ email: email });
     const userExists = await User.findOne({ name: user });
@@ -312,6 +324,14 @@ app.post("/signup", async (req, res) => {
     } else if (!emailExists && userExists) {
       return res.json({ message: "Esse nome de usuário já está em uso." });
     }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      name: user,
+      email: email,
+      password: hashedPassword,
+    });
 
     await newUser.save();
     res
@@ -329,7 +349,7 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-// Inicia o servidor
+//Inicia o servidor
 app.listen(port, () => {
   console.log(`Servidor rodando em http://localhost:${port}`);
 });
