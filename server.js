@@ -30,14 +30,14 @@ const User = mongoose.model("User", userSchema);
 
 //Esquema da publicação
 const publicationSchema = new mongoose.Schema({
-  owner: { type: String, required: true },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   title: { type: String, required: true },
   description: { type: String, required: true },
   image: { type: String },
   createdAt: { type: Date, default: Date.now },
   comments: [
     {
-      owner: String,
+      owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       comment: String,
       createdAt: { type: Date, default: Date.now },
     },
@@ -131,7 +131,9 @@ app.post("/deleteComment", async (req, res) => {
 app.post("/getComments", async (req, res) => {
   const { id } = req.body.data;
   try {
-    const publication = await Publication.findOne({ _id: id });
+    const publication = await Publication.findOne({ _id: id }).populate(
+      "comments.owner"
+    );
 
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -147,7 +149,7 @@ app.post("/getComments", async (req, res) => {
 app.post("/addComment", async (req, res) => {
   try {
     const { user, id, comment } = req.body.data;
-
+    console.log(user, id, comment);
     const publication = await Publication.findOne({ _id: id });
 
     if (!publication) {
@@ -180,7 +182,7 @@ app.post("/publications", upload.single("image"), async (req, res) => {
     const image = req.file ? req.file.path : null; // Caminho do arquivo de imagem
 
     const newPublication = new Publication({
-      owner: owner,
+      owner: owner, //Guardar o ID para posteriormente poder acessar todas as informações do usuário
       title: title,
       description: description,
       image: image,
@@ -217,7 +219,9 @@ app.delete("/deletePublication", async (req, res) => {
 //Rota para buscar publicações
 app.get("/getPublications", async (req, res) => {
   try {
-    const publications = await Publication.find();
+    const publications = await Publication.find()
+      .populate("owner")
+      .populate("comments.owner");
     res.json(publications);
   } catch (error) {
     console.error("Erro ao buscar publicações:", error);
@@ -346,6 +350,57 @@ app.post("/signup", async (req, res) => {
     } else {
       res.status(500).json({ message: "Erro interno do servidor:", error });
     }
+  }
+});
+
+app.put("/editProfile", upload.single("image"), async (req, res) => {
+  try {
+    const { userId, name, email } = req.body;
+    const image = req.file ? req.file.path : null;
+    console.log(image);
+
+    const user = await User.findById({ _id: userId });
+
+    if (!user) {
+      res.status(500).json({ message: "Usuário não encontrado" });
+    }
+
+    if (name != null && name.replaceAll(" ", "") != "") {
+      user.name = name;
+    }
+
+    if (email != null && email.replaceAll(" ", "") != "") {
+      user.email = email;
+    }
+
+    if (image != null && image != "") {
+      user.image = image;
+    }
+
+    await user.save();
+
+    res
+      .status(200)
+      .json({ message: "Perfil editado com sucesso!", user: user });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Erro interno do servidor:", error: error });
+  }
+});
+
+app.get("/getOwnerInformation", async (req, res) => {
+  try {
+    const { name } = req.body;
+    const user = await User.findOne({ name: name });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    res.status(200).json({ owner: user });
+  } catch (error) {
+    console.log(error);
   }
 });
 
