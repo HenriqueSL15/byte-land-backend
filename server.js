@@ -316,7 +316,7 @@ app.post("/signup", async (req, res) => {
   //Criação do perfil no banco de dados
   try {
     const { user, email, password } = req.body;
-
+    //FAZER OS REQUISITOS PARA A SENHA(TAMANHO MÍNIMO, CARACTERES ESPECIAIS E ETC)
     const emailExists = await User.findOne({ email: email });
     const userExists = await User.findOne({ name: user });
     if (emailExists && userExists) {
@@ -399,6 +399,33 @@ app.get("/getOwnerInformation", async (req, res) => {
     }
 
     res.status(200).json({ owner: user });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+app.post("/changePassword", async (req, res) => {
+  try {
+    const { userID, newPassword, oldPassword } = req.body;
+    const user = await User.findById(userID);
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const samePassword = await verifyPassword(oldPassword, user.password);
+    console.log(samePassword);
+
+    if (samePassword) {
+      //FAZER OS REQUISITOS PARA A SENHA(TAMANHO MÍNIMO, CARACTERES ESPECIAIS E ETC)
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      user.password = hashedPassword;
+      await user.save();
+      return res.status(200).json({ message: "Senha alterada com sucesso" });
+    }
+
+    return res.status(401).json({ message: "Senha incorreta" });
   } catch (error) {
     console.log(error);
   }
