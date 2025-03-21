@@ -19,6 +19,15 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: "https://cdn-icons-png.flaticon.com/512/711/711769.png",
   },
+  userPageImage: {
+    type: String,
+    default:
+      "https://www.solidbackgrounds.com/images/1920x1080/1920x1080-black-solid-color-background.jpg",
+  },
+  userPageDescription: {
+    type: String,
+    default: "Nenhuma descrição",
+  },
   createdAt: {
     type: Date,
     default: Date.now(),
@@ -234,6 +243,7 @@ app.put("/editPublication", upload.single("image"), async (req, res) => {
   console.log(req.body);
   try {
     const { owner, id, title, description } = req.body;
+    console.log(id, title, description);
     let imagePath = null;
 
     // Verifica se um arquivo de imagem foi enviado
@@ -243,7 +253,7 @@ app.put("/editPublication", upload.single("image"), async (req, res) => {
     }
 
     // Encontra a publicação no banco de dados
-    const publication = await Publication.findOne({ _id: id });
+    const publication = await Publication.findById({ _id: id });
 
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -278,6 +288,29 @@ app.put("/editPublication", upload.single("image"), async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+//Rota para obter todos os posts de um usuário específico
+app.post("/getUserPosts", async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const userPosts = await Publication.find({ owner: userId })
+      .populate("comments.owner")
+      .populate("owner");
+
+    res
+      .status(200)
+      .json({ message: "Posts obtidos com sucesso", posts: userPosts });
+  } catch (error) {
+    console.log(error);
   }
 });
 
@@ -357,7 +390,6 @@ app.put("/editProfile", upload.single("image"), async (req, res) => {
   try {
     const { userId, name, email } = req.body;
     const image = req.file ? req.file.path : null;
-    console.log(image);
 
     const user = await User.findById({ _id: userId });
 
@@ -389,6 +421,44 @@ app.put("/editProfile", upload.single("image"), async (req, res) => {
   }
 });
 
+app.put(
+  "/editUserPageInformation",
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      console.log("chegou aqui");
+      const { userId, description } = req.body;
+
+      const image = req.file ? req.file.path : null;
+      console.log(req.body);
+      const user = await User.findById({ _id: userId });
+
+      console.log(userId, description);
+
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+
+      if (description != null && description.replaceAll(" ", "") != "") {
+        user.userPageDescription = description;
+      }
+
+      if (image != null && image != "") {
+        user.userPageImage = image;
+      }
+
+      await user.save();
+
+      return res
+        .status(200)
+        .json({ message: "Perfil editado com sucesso!", user: user });
+    } catch (error) {
+      res.status(500).json({ message: "Erro interno do servidor:", error });
+    }
+  }
+);
+
+//Rota para obter as informações do dono de uma publicação/contas
 app.get("/getOwnerInformation", async (req, res) => {
   try {
     const { name } = req.body;
@@ -404,6 +474,7 @@ app.get("/getOwnerInformation", async (req, res) => {
   }
 });
 
+//Rota para alterar a senha de um cadastro
 app.post("/changePassword", async (req, res) => {
   try {
     const { userID, newPassword, oldPassword } = req.body;
