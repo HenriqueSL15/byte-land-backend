@@ -7,56 +7,58 @@ const bcrypt = require("bcryptjs");
 const app = express();
 const port = 3000;
 
+// String de conexão com o MongoDB Atlas (substitua com suas credenciais)
 const uri =
   "mongodb+srv://myAtlasDBUser:135790@myatlasclusteredu.ufhaxua.mongodb.net/ByteLandDatabase?retryWrites=true&w=majority&appName=myAtlasClusterEDU";
 
-//Esquema do usuário
+// Schema do usuário (define estrutura dos dados no MongoDB)
 const userSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  name: { type: String, required: true, unique: true }, // Nome obrigatório e único
+  email: { type: String, required: true, unique: true }, // Email obrigatório e único
+  password: { type: String, required: true }, // Senha obrigatória
   image: {
     type: String,
-    default: "https://cdn-icons-png.flaticon.com/512/711/711769.png",
+    default: "https://cdn-icons-png.flaticon.com/512/711/711769.png", // Imagem padrão
   },
   userPageImage: {
     type: String,
     default:
-      "https://www.solidbackgrounds.com/images/1920x1080/1920x1080-black-solid-color-background.jpg",
+      "https://www.solidbackgrounds.com/images/1920x1080/1920x1080-black-solid-color-background.jpg", // Banner padrão
   },
   userPageDescription: {
     type: String,
-    default: "Nenhuma descrição",
+    default: "Nenhuma descrição", // Descrição inicial
   },
   createdAt: {
     type: Date,
-    default: Date.now(),
+    default: Date.now(), // Data de criação automática
   },
 });
 
-//Modelo do usuário
+// Modelo do usuário (interface com a coleção 'users')
 const User = mongoose.model("User", userSchema);
 
-//Esquema da publicação
+// Schema da publicação (relacionado ao usuário via ObjectId)
 const publicationSchema = new mongoose.Schema({
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  title: { type: String, required: true },
-  description: { type: String, required: true },
-  image: { type: String },
-  createdAt: { type: Date, default: Date.now },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // Dono da publicação
+  title: { type: String, required: true }, // Título obrigatório
+  description: { type: String, required: true }, // Descrição obrigatória
+  image: { type: String }, // Caminho da imagem (opcional)
+  createdAt: { type: Date, default: Date.now }, // Data de criação
   comments: [
+    // Array de comentários
     {
-      owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      comment: String,
-      createdAt: { type: Date, default: Date.now },
+      owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Dono do comentário
+      comment: String, // Texto do comentário
+      createdAt: { type: Date, default: Date.now }, // Data do comentário
     },
   ],
 });
 
-//Modelo da pulicação
+// Modelo da publicação (interface com a coleção 'publications')
 const Publication = mongoose.model("Publication", publicationSchema);
 
-//Configuração Mongoose
+// Conexão com o MongoDB Atlas
 mongoose
   .connect(uri, {
     useNewUrlParser: true,
@@ -69,46 +71,46 @@ mongoose
     console.error("Erro na conexão com o banco de dados:", err);
   });
 
-//Configuração do CORS
+// Configuração do CORS para permitir comunicação com o frontend
 app.use(
   cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    origin: "http://localhost:5173", // Permite apenas este domínio
+    methods: ["GET", "POST", "PUT", "DELETE"], // Métodos permitidos
+    allowedHeaders: ["Content-Type", "Authorization"], // Cabeçalhos permitidos
   })
 );
 
-// Verificar senha
+// Função para verificar senha com bcrypt
 async function verifyPassword(password, hash) {
   const match = await bcrypt.compare(password, hash);
   return match;
 }
 
-//Configuração do Multer para upload de arquivos
+// Configuração do Multer para upload de arquivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Pasta onde os arquivos serão salvos
+    cb(null, "uploads/"); // Pasta onde as imagens serão salvas
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Nome do arquivo
+    cb(null, Date.now() + path.extname(file.originalname)); // Nome único para o arquivo
   },
 });
 
 const upload = multer({ storage });
 
-//Configura o diretório de uploads para servir arquivos estáticos
+// Disponibiliza a pasta 'uploads' como estática
 const uploadsPath = path.join(__dirname, "uploads");
 app.use("/uploads", express.static(uploadsPath));
 
-//Middleware para permitir o uso de JSON no corpo das requisições
+// Permite o uso de JSON nas requisições
 app.use(express.json());
 
-//Rota de exemplo
+// Rota de verificação do servidor
 app.get("/", (req, res) => {
   res.send("Backend rodando!");
 });
 
-//Rota para deletar comentários de publicações
+// Rota para deletar comentários específicos (DELETE RESTful)
 app.delete(
   "/publications/:publicationId/comments/:commentId",
   async (req, res) => {
@@ -138,14 +140,14 @@ app.delete(
   }
 );
 
-//Rota para obter todas os comentários de uma publicação
+// Rota para obter todos os comentários de uma publicação (GET RESTful)
 app.get("/publications/:publicationId/comments", async (req, res) => {
   const { publicationId } = req.params;
 
   try {
     const publication = await Publication.findOne({
       _id: publicationId,
-    }).populate("comments.owner");
+    }).populate("comments.owner"); // Popula dados do dono do comentário
 
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -157,7 +159,7 @@ app.get("/publications/:publicationId/comments", async (req, res) => {
   }
 });
 
-//Rota para adicionar comentários em uma publicação
+// Rota para adicionar comentários (POST RESTful)
 app.post("/publications/:publicationId/comments", async (req, res) => {
   try {
     const { user, comment } = req.body.data;
@@ -188,18 +190,18 @@ app.post("/publications/:publicationId/comments", async (req, res) => {
   }
 });
 
-//Rota para receber as publicações
+// Rota para criar publicações com upload de imagem (POST RESTful)
 app.post("/publications", upload.single("image"), async (req, res) => {
   try {
     const { owner, title, description } = req.body;
-    const image = req.file ? req.file.path : null; // Caminho do arquivo de imagem
+    const image = req.file ? req.file.path : null;
 
     const newPublication = new Publication({
-      owner: owner, //Guardar o ID para posteriormente poder acessar todas as informações do usuário
+      owner: owner, // ID do usuário dono
       title: title,
       description: description,
       image: image,
-      comments: [],
+      comments: [], // Inicializa array vazio
     });
 
     await newPublication.save();
@@ -212,7 +214,7 @@ app.post("/publications", upload.single("image"), async (req, res) => {
   }
 });
 
-//Rota para deletar publicação
+// Rota para deletar publicações (DELETE RESTful)
 app.delete("/publications/:publicationId", async (req, res) => {
   try {
     const { owner } = req.body;
@@ -225,19 +227,18 @@ app.delete("/publications/:publicationId", async (req, res) => {
       return res.status(404).json({ message: "Publicação não encontrada" });
     }
 
-    // await Publication.deleteOne({ _id: id });
     res.status(200).json({ message: "Publicação deletada com sucesso" });
   } catch (error) {
     res.status(500).json({ error: error });
   }
 });
 
-//Rota para buscar publicações
+// Rota para buscar todas publicações (GET RESTful)
 app.get("/publications", async (req, res) => {
   try {
     const publications = await Publication.find()
-      .populate("owner")
-      .populate("comments.owner");
+      .populate("owner") // Popula dados do dono
+      .populate("comments.owner"); // Popula donos dos comentários
     res.json(publications);
   } catch (error) {
     console.error("Erro ao buscar publicações:", error);
@@ -245,7 +246,7 @@ app.get("/publications", async (req, res) => {
   }
 });
 
-//Rota para editar uma publicação
+// Rota para editar publicação (PUT RESTful)
 app.put(
   "/publications/:publicationId",
   upload.single("image"),
@@ -256,20 +257,16 @@ app.put(
 
       let imagePath = null;
 
-      // Verifica se um arquivo de imagem foi enviado
       if (req.file) {
-        // Salva o caminho do arquivo no banco de dados
-        imagePath = req.file.path;
+        imagePath = req.file.path; // Atualiza imagem se fornecida
       }
 
-      // Encontra a publicação no banco de dados
       const publication = await Publication.findById({ _id: publicationId });
 
       if (!publication) {
         return res.status(404).json({ message: "Publicação não encontrada" });
       }
 
-      // Atualiza os campos da publicação
       if (title.replaceAll(" ", "") != "" && title != null) {
         publication.title = title;
       } else {
@@ -284,14 +281,12 @@ app.put(
           .json({ message: "Descrição não pode ser vazia" });
       }
 
-      // Se uma nova imagem foi fornecida, atualiza o campo de imagem
       if (imagePath) {
         publication.image = imagePath;
       } else if (imagePath == null) {
         publication.image = null;
       }
 
-      // Salva as alterações no banco de dados
       await publication.save();
 
       res.status(200).json({
@@ -304,7 +299,7 @@ app.put(
   }
 );
 
-//Rota para obter todos os posts de um usuário específico
+// Rota para obter publicações de um usuário específico (GET RESTful)
 app.get("/users/:userId/publications", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -329,7 +324,7 @@ app.get("/users/:userId/publications", async (req, res) => {
   }
 });
 
-//Rota de Login
+// Rota de login (POST)
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -347,7 +342,7 @@ app.post("/login", async (req, res) => {
     }
 
     const userWithoutPassword = { ...user.toObject() };
-    delete userWithoutPassword.password;
+    delete userWithoutPassword.password; // Remove senha da resposta
 
     res.status(200).json({
       message: "Login realizado com sucesso!",
@@ -359,14 +354,15 @@ app.post("/login", async (req, res) => {
   }
 });
 
-//Rota de cadastro
+// Rota de cadastro (POST)
 app.post("/signup", async (req, res) => {
-  //Criação do perfil no banco de dados
   try {
     const { user, email, password } = req.body;
-    //FAZER OS REQUISITOS PARA A SENHA(TAMANHO MÍNIMO, CARACTERES ESPECIAIS E ETC)
+
+    // Verifica existência prévia
     const emailExists = await User.findOne({ email: email });
     const userExists = await User.findOne({ name: user });
+
     if (emailExists && userExists) {
       return res.json({
         message: "Este nome de usuário e e-mail já estão em uso.",
@@ -382,7 +378,7 @@ app.post("/signup", async (req, res) => {
     const newUser = new User({
       name: user,
       email: email,
-      password: hashedPassword,
+      password: hashedPassword, // Senha hasheada
     });
 
     await newUser.save();
@@ -401,6 +397,7 @@ app.post("/signup", async (req, res) => {
   }
 });
 
+// Rota para editar perfil (PUT RESTful)
 app.put("/users/:userId", upload.single("image"), async (req, res) => {
   try {
     const { name, email } = req.body;
@@ -438,6 +435,7 @@ app.put("/users/:userId", upload.single("image"), async (req, res) => {
   }
 });
 
+// Rota para editar página do usuário (PUT RESTful)
 app.put("/users/:userId/userPage", upload.single("image"), async (req, res) => {
   try {
     const { description } = req.body;
@@ -469,7 +467,7 @@ app.put("/users/:userId/userPage", upload.single("image"), async (req, res) => {
   }
 });
 
-//Rota para alterar a senha de um cadastro
+// Rota para alterar senha (PUT RESTful)
 app.put("/users/:userId/password", async (req, res) => {
   try {
     const { newPassword, oldPassword } = req.body;
@@ -482,12 +480,9 @@ app.put("/users/:userId/password", async (req, res) => {
     }
 
     const samePassword = await verifyPassword(oldPassword, user.password);
-    console.log(samePassword);
 
     if (samePassword) {
-      //FAZER OS REQUISITOS PARA A SENHA(TAMANHO MÍNIMO, CARACTERES ESPECIAIS E ETC)
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-
       user.password = hashedPassword;
       await user.save();
       return res.status(200).json({ message: "Senha alterada com sucesso" });
@@ -499,6 +494,7 @@ app.put("/users/:userId/password", async (req, res) => {
   }
 });
 
+// Rota para obter informações do usuário (GET RESTful)
 app.get("/users/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -515,7 +511,7 @@ app.get("/users/:userId", async (req, res) => {
   }
 });
 
-//Inicia o servidor
+// Inicia o servidor
 app.listen(port, () => {
   console.log(`Servidor rodando em http://localhost:${port}`);
 });
