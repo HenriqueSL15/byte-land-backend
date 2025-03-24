@@ -109,40 +109,43 @@ app.get("/", (req, res) => {
 });
 
 //Rota para deletar comentários de publicações
-app.post("/deleteComment", async (req, res) => {
-  try {
-    console.log("Estou deletando");
-    const { publicationId, commentId } = req.body.data;
+app.delete(
+  "/publications/:publicationId/comments/:commentId",
+  async (req, res) => {
+    try {
+      const { publicationId, commentId } = req.params;
 
-    const publication = await Publication.findOne({ _id: publicationId });
+      const publication = await Publication.findOne({ _id: publicationId });
 
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
+      if (!publication) {
+        return res.status(404).json({ message: "Publicação não encontrada" });
+      }
+
+      const commentIndex = publication.comments.findIndex(
+        (comment) => comment._id.toString() === commentId
+      );
+      console.log(commentIndex);
+
+      if (commentIndex !== -1) {
+        publication.comments.splice(commentIndex, 1);
+
+        await publication.save();
+        res.status(200).json({ message: "Comentário deletado com sucesso" });
+      }
+    } catch (error) {
+      console.log(error);
     }
-
-    const commentIndex = publication.comments.findIndex(
-      (comment) => comment._id.toString() === commentId
-    );
-    console.log(commentIndex);
-
-    if (commentIndex !== -1) {
-      publication.comments.splice(commentIndex, 1);
-
-      await publication.save();
-      res.status(200).json({ message: "Comentário deletado com sucesso" });
-    }
-  } catch (error) {
-    console.log(error);
   }
-});
+);
 
 //Rota para obter todas os comentários de uma publicação
-app.post("/getComments", async (req, res) => {
-  const { id } = req.body.data;
+app.get("/publications/:publicationId/comments", async (req, res) => {
+  const { publicationId } = req.params;
+
   try {
-    const publication = await Publication.findOne({ _id: id }).populate(
-      "comments.owner"
-    );
+    const publication = await Publication.findOne({
+      _id: publicationId,
+    }).populate("comments.owner");
 
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -155,11 +158,11 @@ app.post("/getComments", async (req, res) => {
 });
 
 //Rota para adicionar comentários em uma publicação
-app.post("/addComment", async (req, res) => {
+app.post("/publications/:publicationId/comments", async (req, res) => {
   try {
-    const { user, id, comment } = req.body.data;
-    console.log(user, id, comment);
-    const publication = await Publication.findOne({ _id: id });
+    const { user, comment } = req.body.data;
+    const { publicationId } = req.params;
+    const publication = await Publication.findOne({ _id: publicationId });
 
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -184,6 +187,7 @@ app.post("/addComment", async (req, res) => {
     console.log(error);
   }
 });
+
 //Rota para receber as publicações
 app.post("/publications", upload.single("image"), async (req, res) => {
   try {
@@ -209,10 +213,13 @@ app.post("/publications", upload.single("image"), async (req, res) => {
 });
 
 //Rota para deletar publicação
-app.delete("/deletePublication", async (req, res) => {
+app.delete("/publications/:publicationId", async (req, res) => {
   try {
-    const { owner, id } = req.body;
-    const publication = await Publication.findOneAndDelete({ _id: id });
+    const { owner } = req.body;
+    const { publicationId } = req.params;
+    const publication = await Publication.findOneAndDelete({
+      _id: publicationId,
+    });
 
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -226,7 +233,7 @@ app.delete("/deletePublication", async (req, res) => {
 });
 
 //Rota para buscar publicações
-app.get("/getPublications", async (req, res) => {
+app.get("/publications", async (req, res) => {
   try {
     const publications = await Publication.find()
       .populate("owner")
@@ -239,62 +246,68 @@ app.get("/getPublications", async (req, res) => {
 });
 
 //Rota para editar uma publicação
-app.put("/editPublication", upload.single("image"), async (req, res) => {
-  console.log(req.body);
-  try {
-    const { owner, id, title, description } = req.body;
-    console.log(id, title, description);
-    let imagePath = null;
+app.put(
+  "/publications/:publicationId",
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const { owner, title, description } = req.body;
+      const { publicationId } = req.params;
 
-    // Verifica se um arquivo de imagem foi enviado
-    if (req.file) {
-      // Salva o caminho do arquivo no banco de dados
-      imagePath = req.file.path;
+      let imagePath = null;
+
+      // Verifica se um arquivo de imagem foi enviado
+      if (req.file) {
+        // Salva o caminho do arquivo no banco de dados
+        imagePath = req.file.path;
+      }
+
+      // Encontra a publicação no banco de dados
+      const publication = await Publication.findById({ _id: publicationId });
+
+      if (!publication) {
+        return res.status(404).json({ message: "Publicação não encontrada" });
+      }
+
+      // Atualiza os campos da publicação
+      if (title.replaceAll(" ", "") != "" && title != null) {
+        publication.title = title;
+      } else {
+        return res.status(404).json({ message: "Título não pode ser vazio" });
+      }
+
+      if (description.replaceAll(" ", "") != "" && description != null) {
+        publication.description = description;
+      } else {
+        return res
+          .status(404)
+          .json({ message: "Descrição não pode ser vazia" });
+      }
+
+      // Se uma nova imagem foi fornecida, atualiza o campo de imagem
+      if (imagePath) {
+        publication.image = imagePath;
+      } else if (imagePath == null) {
+        publication.image = null;
+      }
+
+      // Salva as alterações no banco de dados
+      await publication.save();
+
+      res.status(200).json({
+        message: "Publicação editada com sucesso",
+        publication: publication,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
-
-    // Encontra a publicação no banco de dados
-    const publication = await Publication.findById({ _id: id });
-
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    // Atualiza os campos da publicação
-    if (title.replaceAll(" ", "") != "" && title != null) {
-      publication.title = title;
-    } else {
-      return res.status(404).json({ message: "Título não pode ser vazio" });
-    }
-
-    if (description.replaceAll(" ", "") != "" && description != null) {
-      publication.description = description;
-    } else {
-      return res.status(404).json({ message: "Descrição não pode ser vazia" });
-    }
-
-    // Se uma nova imagem foi fornecida, atualiza o campo de imagem
-    if (imagePath) {
-      publication.image = imagePath;
-    } else if (imagePath == null) {
-      publication.image = null;
-    }
-
-    // Salva as alterações no banco de dados
-    await publication.save();
-
-    res.status(200).json({
-      message: "Publicação editada com sucesso",
-      publication: publication,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
-});
+);
 
 //Rota para obter todos os posts de um usuário específico
-app.post("/getUserPosts", async (req, res) => {
+app.get("/users/:userId/publications", async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId } = req.params;
 
     const user = await User.findById(userId);
 
@@ -306,9 +319,11 @@ app.post("/getUserPosts", async (req, res) => {
       .populate("comments.owner")
       .populate("owner");
 
-    res
-      .status(200)
-      .json({ message: "Posts obtidos com sucesso", posts: userPosts });
+    res.status(200).json({
+      message: "Posts obtidos com sucesso",
+      posts: userPosts,
+      user: user,
+    });
   } catch (error) {
     console.log(error);
   }
@@ -386,9 +401,11 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-app.put("/editProfile", upload.single("image"), async (req, res) => {
+app.put("/users/:userId", upload.single("image"), async (req, res) => {
   try {
-    const { userId, name, email } = req.body;
+    const { name, email } = req.body;
+    const { userId } = req.params;
+
     const image = req.file ? req.file.path : null;
 
     const user = await User.findById({ _id: userId });
@@ -421,64 +438,44 @@ app.put("/editProfile", upload.single("image"), async (req, res) => {
   }
 });
 
-app.put(
-  "/editUserPageInformation",
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      console.log("chegou aqui");
-      const { userId, description } = req.body;
-
-      const image = req.file ? req.file.path : null;
-      console.log(req.body);
-      const user = await User.findById({ _id: userId });
-
-      console.log(userId, description);
-
-      if (!user) {
-        return res.status(404).json({ message: "Usuário não encontrado" });
-      }
-
-      if (description != null && description.replaceAll(" ", "") != "") {
-        user.userPageDescription = description;
-      }
-
-      if (image != null && image != "") {
-        user.userPageImage = image;
-      }
-
-      await user.save();
-
-      return res
-        .status(200)
-        .json({ message: "Perfil editado com sucesso!", user: user });
-    } catch (error) {
-      res.status(500).json({ message: "Erro interno do servidor:", error });
-    }
-  }
-);
-
-//Rota para obter as informações do dono de uma publicação/contas
-app.get("/getOwnerInformation", async (req, res) => {
+app.put("/users/:userId/userPage", upload.single("image"), async (req, res) => {
   try {
-    const { name } = req.body;
-    const user = await User.findOne({ name: name });
+    const { description } = req.body;
+    const { userId } = req.params;
+
+    const image = req.file ? req.file.path : null;
+
+    const user = await User.findById({ _id: userId });
 
     if (!user) {
       return res.status(404).json({ message: "Usuário não encontrado" });
     }
 
-    res.status(200).json({ owner: user });
+    if (description != null && description.replaceAll(" ", "") != "") {
+      user.userPageDescription = description;
+    }
+
+    if (image != null && image != "") {
+      user.userPageImage = image;
+    }
+
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ message: "Perfil editado com sucesso!", user: user });
   } catch (error) {
-    console.log(error);
+    res.status(500).json({ message: "Erro interno do servidor:", error });
   }
 });
 
 //Rota para alterar a senha de um cadastro
-app.post("/changePassword", async (req, res) => {
+app.put("/users/:userId/password", async (req, res) => {
   try {
-    const { userID, newPassword, oldPassword } = req.body;
-    const user = await User.findById(userID);
+    const { newPassword, oldPassword } = req.body;
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({ message: "Usuário não encontrado" });
@@ -497,6 +494,22 @@ app.post("/changePassword", async (req, res) => {
     }
 
     return res.status(401).json({ message: "Senha incorreta" });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+app.get("/users/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    res.status(200).json({ user: user });
   } catch (error) {
     console.log(error);
   }
