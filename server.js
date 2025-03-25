@@ -4,12 +4,12 @@ const multer = require("multer");
 const path = require("path");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+require("dotenv").config();
 const app = express();
 const port = 3000;
 
 // String de conexão com o MongoDB Atlas (substitua com suas credenciais)
-const uri =
-  "mongodb+srv://myAtlasDBUser:135790@myatlasclusteredu.ufhaxua.mongodb.net/ByteLandDatabase?retryWrites=true&w=majority&appName=myAtlasClusterEDU";
+const uri = process.env.MONGODB_URI;
 
 // Schema do usuário (define estrutura dos dados no MongoDB)
 const userSchema = new mongoose.Schema({
