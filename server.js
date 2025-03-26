@@ -1,5 +1,6 @@
 const express = require("express");
 require("express-async-errors");
+const { body, param, validationResult } = require("express-validator");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
@@ -87,6 +88,14 @@ async function verifyPassword(password, hash) {
   return match;
 }
 
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Apenas imagens são permitidas!"), false);
+  }
+};
+
 // Configuração do Multer para upload de arquivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -97,7 +106,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage, fileFilter });
 
 // Disponibiliza a pasta 'uploads' como estática
 const uploadsPath = path.join(__dirname, "uploads");
@@ -114,7 +123,16 @@ app.get("/", (req, res) => {
 // Rota para deletar comentários específicos (DELETE RESTful)
 app.delete(
   "/publications/:publicationId/comments/:commentId",
+  [
+    param("publicationId").isMongoId().withMessage("ID de publicação inválido"),
+    param("commentId").isMongoId().withMessage("ID de comentário inválido"),
+  ],
   async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const { publicationId, commentId } = req.params;
 
     const publication = await Publication.findOne({ _id: publicationId });
@@ -126,92 +144,158 @@ app.delete(
     const commentIndex = publication.comments.findIndex(
       (comment) => comment._id.toString() === commentId
     );
-    console.log(commentIndex);
 
-    if (commentIndex !== -1) {
-      publication.comments.splice(commentIndex, 1);
-
-      await publication.save();
-      res.status(200).json({ message: "Comentário deletado com sucesso" });
+    if (commentIndex == -1) {
+      return res.status(404).json({ message: "Comentário não encontrado" });
     }
+
+    publication.comments.splice(commentIndex, 1);
+
+    await publication.save();
+    res.status(200).json({ message: "Comentário deletado com sucesso" });
   }
 );
 
 // Rota para obter todos os comentários de uma publicação (GET RESTful)
-app.get("/publications/:publicationId/comments", async (req, res) => {
-  const { publicationId } = req.params;
+app.get(
+  "/publications/:publicationId/comments",
+  [param("publicationId").isMongoId().withMessage("ID de publicação inválido")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const publication = await Publication.findOne({
-    _id: publicationId,
-  }).populate("comments.owner"); // Popula dados do dono do comentário
+    const { publicationId } = req.params;
 
-  if (!publication) {
-    return res.status(404).json({ message: "Publicação não encontrada" });
+    const publication = await Publication.findOne({
+      _id: publicationId,
+    }).populate("comments.owner"); // Popula dados do dono do comentário
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    res.status(200).json({ comments: publication.comments });
   }
-
-  res.status(200).json({ comments: publication.comments });
-});
+);
 
 // Rota para adicionar comentários (POST RESTful)
-app.post("/publications/:publicationId/comments", async (req, res) => {
-  const { user, comment } = req.body.data;
-  const { publicationId } = req.params;
-  const publication = await Publication.findOne({ _id: publicationId });
+app.post(
+  "/publications/:publicationId/comments",
+  [
+    param("publicationId").isMongoId().withMessage("ID de publicação inválido"),
+    body("user").isMongoId().withMessage("ID de usuário inválido"),
+    body("comment")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Comentário não pode ser vazio"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  if (!publication) {
-    return res.status(404).json({ message: "Publicação não encontrada" });
+    const { user, comment } = req.body.data;
+    const { publicationId } = req.params;
+    const publication = await Publication.findOne({ _id: publicationId });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    const newComment = {
+      owner: user,
+      comment: comment,
+      createdAt: Date.now(),
+    };
+
+    if (!user || !comment) {
+      return res.status(404).json({ message: "Comentário não pode ser vazio" });
+    }
+
+    publication.comments.push(newComment);
+
+    await publication.save();
+
+    res.status(200).json({ message: "Comentário adicionado com sucesso" });
   }
-
-  const newComment = {
-    owner: user,
-    comment: comment,
-    createdAt: Date.now(),
-  };
-
-  if (!user || !comment) {
-    return res.status(404).json({ message: "Comentário não pode ser vazio" });
-  }
-
-  publication.comments.push(newComment);
-
-  await publication.save();
-
-  res.status(200).json({ message: "Comentário adicionado com sucesso" });
-});
+);
 
 // Rota para criar publicações com upload de imagem (POST RESTful)
-app.post("/publications", upload.single("image"), async (req, res) => {
-  const { owner, title, description } = req.body;
-  const image = req.file ? req.file.path : null;
+app.post(
+  "/publications",
+  upload.single("image"),
+  [
+    body("owner").isMongoId().withMessage("ID de usuário inválido"),
+    body("title")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Título não pode ser vazio"),
+    body("description")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Descrição não pode ser vazia"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const newPublication = new Publication({
-    owner: owner, // ID do usuário dono
-    title: title,
-    description: description,
-    image: image,
-    comments: [], // Inicializa array vazio
-  });
+    const { owner, title, description } = req.body;
 
-  await newPublication.save();
+    const image = req.file ? req.file.path : null;
 
-  console.log("Dados recebidos:", { title, description, image });
-  res.status(200).json({ message: "Publicação recebida com sucesso!" });
-});
+    const newPublication = new Publication({
+      owner: owner, // ID do usuário dono
+      title: title,
+      description: description,
+      image: image,
+      comments: [], // Inicializa array vazio
+    });
+
+    await newPublication.save();
+
+    console.log("Dados recebidos:", { title, description, image });
+    res.status(201).json({
+      message: "Publicação recebida com sucesso!",
+      publication: newPublication,
+    });
+  }
+);
 
 // Rota para deletar publicações (DELETE RESTful)
-app.delete("/publications/:publicationId", async (req, res) => {
-  const { owner } = req.body;
-  const { publicationId } = req.params;
-  const publication = await Publication.findOneAndDelete({
-    _id: publicationId,
-  });
+app.delete(
+  "/publications/:publicationId",
+  [
+    param("publicationId").isMongoId().withMessage("ID de publicação inválido"),
+    body("owner").isMongoId().withMessage("ID de usuário inválido"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  if (!publication) {
-    return res.status(404).json({ message: "Publicação não encontrada" });
+    const { owner } = req.body;
+    const { publicationId } = req.params;
+    const publication = await Publication.findOneAndDelete({
+      _id: publicationId,
+      owner: owner,
+    });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    res.status(200).json({ message: "Publicação deletada com sucesso" });
   }
-
-  res.status(200).json({ message: "Publicação deletada com sucesso" });
-});
+);
 
 // Rota para buscar todas publicações (GET RESTful)
 app.get("/publications", async (req, res) => {
@@ -224,8 +308,27 @@ app.get("/publications", async (req, res) => {
 // Rota para editar publicação (PUT RESTful)
 app.put(
   "/publications/:publicationId",
+  [
+    param("publicationId").isMongoId().withMessage("ID de publicação inválido"),
+    body("owner").isMongoId().withMessage("ID de usuário inválido"),
+    body("title")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Título não pode ser vazio"),
+    body("description")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Descrição não pode ser vazia"),
+  ],
   upload.single("image"),
   async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const { owner, title, description } = req.body;
     const { publicationId } = req.params;
 
@@ -241,17 +344,9 @@ app.put(
       return res.status(404).json({ message: "Publicação não encontrada" });
     }
 
-    if (title.replaceAll(" ", "") != "" && title != null) {
-      publication.title = title;
-    } else {
-      return res.status(404).json({ message: "Título não pode ser vazio" });
-    }
+    publication.title = title;
 
-    if (description.replaceAll(" ", "") != "" && description != null) {
-      publication.description = description;
-    } else {
-      return res.status(404).json({ message: "Descrição não pode ser vazia" });
-    }
+    publication.description = description;
 
     if (imagePath) {
       publication.image = imagePath;
@@ -269,179 +364,318 @@ app.put(
 );
 
 // Rota para obter publicações de um usuário específico (GET RESTful)
-app.get("/users/:userId/publications", async (req, res) => {
-  const { userId } = req.params;
+app.get(
+  "/users/:userId/publications",
+  [param("userId").isMongoId().withMessage("ID de usuário inválido")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const user = await User.findById(userId);
+    const { userId } = req.params;
 
-  if (!user) {
-    return res.status(404).json({ message: "Usuário não encontrado" });
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const userPosts = await Publication.find({ owner: userId })
+      .populate("comments.owner")
+      .populate("owner");
+
+    res.status(200).json({
+      message: "Posts obtidos com sucesso",
+      posts: userPosts,
+      user: user,
+    });
   }
-
-  const userPosts = await Publication.find({ owner: userId })
-    .populate("comments.owner")
-    .populate("owner");
-
-  res.status(200).json({
-    message: "Posts obtidos com sucesso",
-    posts: userPosts,
-    user: user,
-  });
-});
+);
 
 // Rota de login (POST)
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+app.post(
+  "/login",
+  [
+    body("email").isEmail().withMessage("Email inválido"),
+    body("password")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Senha não pode ser vazia")
+      .isStrongPassword({
+        minLength: 8,
+        minLowercase: 1,
+        minUppercase: 1,
+        minNumbers: 1,
+        minSymbols: 1,
+      }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const user = await User.findOne({ email: email });
+    const { email, password } = req.body;
 
-  if (!user) {
-    return res.status(404).json({ message: "Esse usuário não existe." });
+    const user = await User.findOne({ email: email });
+
+    if (!user) {
+      return res.status(404).json({ message: "Esse usuário não existe." });
+    }
+
+    const isPasswordValid = await verifyPassword(password, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Senha incorreta" });
+    }
+
+    const userWithoutPassword = { ...user.toObject() };
+    delete userWithoutPassword.password; // Remove senha da resposta
+
+    res.status(200).json({
+      message: "Login realizado com sucesso!",
+      user: userWithoutPassword,
+    });
   }
-
-  const isPasswordValid = await verifyPassword(password, user.password);
-
-  if (!isPasswordValid) {
-    return res.status(401).json({ message: "Senha incorreta" });
-  }
-
-  const userWithoutPassword = { ...user.toObject() };
-  delete userWithoutPassword.password; // Remove senha da resposta
-
-  res.status(200).json({
-    message: "Login realizado com sucesso!",
-    user: userWithoutPassword,
-  });
-});
+);
 
 // Rota de cadastro (POST)
-app.post("/signup", async (req, res) => {
-  const { user, email, password } = req.body;
+app.post(
+  "/signup",
+  [
+    body("user")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Nome de usuário não pode ser vazio"),
+    body("email").isEmail().withMessage("Email inválido"),
+    body("password")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Senha não pode ser vazia")
+      .isStrongPassword({
+        minLength: 8,
+        minLowercase: 1,
+        minUppercase: 1,
+        minNumbers: 1,
+        minSymbols: 1,
+      })
+      .withMessage("Senha inválida"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  // Verifica existência prévia
-  const emailExists = await User.findOne({ email: email });
-  const userExists = await User.findOne({ name: user });
+    const { user, email, password } = req.body;
 
-  if (emailExists && userExists) {
-    return res.json({
-      message: "Este nome de usuário e e-mail já estão em uso.",
+    // Verifica existência prévia
+    const emailExists = await User.findOne({ email: email });
+    const userExists = await User.findOne({ name: user });
+
+    if (emailExists && userExists) {
+      return res.status(409).json({
+        message: "Este nome de usuário e e-mail já estão em uso.",
+      });
+    } else if (emailExists && !userExists) {
+      return res.status(409).json({ message: "Esse e-mail já está em uso." });
+    } else if (!emailExists && userExists) {
+      return res
+        .status(409)
+        .json({ message: "Esse nome de usuário já está em uso." });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      name: user,
+      email: email,
+      password: hashedPassword, // Senha hasheada
     });
-  } else if (emailExists && !userExists) {
-    return res.json({ message: "Esse e-mail já está em uso." });
-  } else if (!emailExists && userExists) {
-    return res.json({ message: "Esse nome de usuário já está em uso." });
+
+    await newUser.save();
+
+    res
+      .status(200)
+      .json({ message: "Usuário criado com sucesso!", user: newUser });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  const newUser = new User({
-    name: user,
-    email: email,
-    password: hashedPassword, // Senha hasheada
-  });
-
-  await newUser.save();
-  res
-    .status(200)
-    .json({ message: "Usuário criado com sucesso!", user: newUser });
-});
+);
 
 // Rota para editar perfil (PUT RESTful)
-app.put("/users/:userId", upload.single("image"), async (req, res) => {
-  const { name, email } = req.body;
-  const { userId } = req.params;
+app.put(
+  "/users/:userId",
+  upload.single("image"),
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    body("name")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Nome de usuário não pode ser vazio"),
+    body("email").isEmail().withMessage("Email inválido"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const image = req.file ? req.file.path : null;
+    const { name, email } = req.body;
+    const { userId } = req.params;
 
-  const user = await User.findById({ _id: userId });
+    const image = req.file ? req.file.path : null;
 
-  if (!user) {
-    res.status(500).json({ message: "Usuário não encontrado" });
+    const user = await User.findById({ _id: userId });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    if (name != null && name.replaceAll(" ", "") != "") {
+      user.name = name;
+    }
+
+    if (email != null && email.replaceAll(" ", "") != "") {
+      user.email = email;
+    }
+
+    if (image != null && image != "") {
+      user.image = image;
+    }
+
+    await user.save();
+
+    res
+      .status(200)
+      .json({ message: "Perfil editado com sucesso!", user: user });
   }
-
-  if (name != null && name.replaceAll(" ", "") != "") {
-    user.name = name;
-  }
-
-  if (email != null && email.replaceAll(" ", "") != "") {
-    user.email = email;
-  }
-
-  if (image != null && image != "") {
-    user.image = image;
-  }
-
-  await user.save();
-
-  res.status(200).json({ message: "Perfil editado com sucesso!", user: user });
-});
+);
 
 // Rota para editar página do usuário (PUT RESTful)
-app.put("/users/:userId/userPage", upload.single("image"), async (req, res) => {
-  const { description } = req.body;
-  const { userId } = req.params;
+app.put(
+  "/users/:userId/userPage",
+  upload.single("image"),
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    body("description")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Descrição não pode ser vazia"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const image = req.file ? req.file.path : null;
+    const { description } = req.body;
+    const { userId } = req.params;
 
-  const user = await User.findById({ _id: userId });
+    const image = req.file ? req.file.path : null;
 
-  if (!user) {
-    return res.status(404).json({ message: "Usuário não encontrado" });
+    const user = await User.findById({ _id: userId });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    if (description != null && description.replaceAll(" ", "") != "") {
+      user.userPageDescription = description;
+    }
+
+    if (image != null && image != "") {
+      user.userPageImage = image;
+    }
+
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ message: "Perfil editado com sucesso!", user: user });
   }
-
-  if (description != null && description.replaceAll(" ", "") != "") {
-    user.userPageDescription = description;
-  }
-
-  if (image != null && image != "") {
-    user.userPageImage = image;
-  }
-
-  await user.save();
-
-  return res
-    .status(200)
-    .json({ message: "Perfil editado com sucesso!", user: user });
-});
+);
 
 // Rota para alterar senha (PUT RESTful)
-app.put("/users/:userId/password", async (req, res) => {
-  const { newPassword, oldPassword } = req.body;
-  const { userId } = req.params;
+app.put(
+  "/users/:userId/password",
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    body("newPassword")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Nova senha não pode ser vazia")
+      .isStrongPassword({
+        minLength: 8,
+        minLowercase: 1,
+        minUppercase: 1,
+        minNumbers: 1,
+        minSymbols: 1,
+      })
+      .withMessage("Senha inválida"),
+    body("oldPassword")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Senha antiga não pode ser vazia"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  const user = await User.findById(userId);
+    const { newPassword, oldPassword } = req.body;
+    const { userId } = req.params;
 
-  if (!user) {
-    return res.status(404).json({ message: "Usuário não encontrado" });
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const samePassword = await verifyPassword(oldPassword, user.password);
+
+    if (samePassword) {
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedPassword;
+      await user.save();
+      return res.status(200).json({ message: "Senha alterada com sucesso" });
+    }
+
+    return res.status(401).json({ message: "Senha incorreta" });
   }
-
-  const samePassword = await verifyPassword(oldPassword, user.password);
-
-  if (samePassword) {
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
-    return res.status(200).json({ message: "Senha alterada com sucesso" });
-  }
-
-  return res.status(401).json({ message: "Senha incorreta" });
-});
+);
 
 // Rota para obter informações do usuário (GET RESTful)
-app.get("/users/:userId", async (req, res) => {
-  const { userId } = req.params;
+app.get(
+  "/users/:userId",
+  [param("userId").isMongoId().withMessage("ID de usuário inválido")],
+  async (req, res) => {
+    const { userId } = req.params;
 
-  const user = await User.findById(userId);
+    const user = await User.findById(userId);
 
-  if (!user) {
-    return res.status(404).json({ message: "Usuário não encontrado" });
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    res.status(200).json({ user: user });
   }
-
-  res.status(200).json({ user: user });
-});
+);
 
 app.use((error, req, res, next) => {
   console.error(error);
+
+  if (error instanceof multer.MulterError) {
+    return res.status(400).json({ message: "Erro no upload de arquivo" });
+  }
+
   res.status(500).json({
     message: "Ocorreu um erro interno no servidor",
     error: process.env.NODE_ENV === "development" ? error.message : "Oculto",
