@@ -1,4 +1,5 @@
 const express = require("express");
+require("express-async-errors");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
@@ -114,28 +115,24 @@ app.get("/", (req, res) => {
 app.delete(
   "/publications/:publicationId/comments/:commentId",
   async (req, res) => {
-    try {
-      const { publicationId, commentId } = req.params;
+    const { publicationId, commentId } = req.params;
 
-      const publication = await Publication.findOne({ _id: publicationId });
+    const publication = await Publication.findOne({ _id: publicationId });
 
-      if (!publication) {
-        return res.status(404).json({ message: "Publicação não encontrada" });
-      }
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
 
-      const commentIndex = publication.comments.findIndex(
-        (comment) => comment._id.toString() === commentId
-      );
-      console.log(commentIndex);
+    const commentIndex = publication.comments.findIndex(
+      (comment) => comment._id.toString() === commentId
+    );
+    console.log(commentIndex);
 
-      if (commentIndex !== -1) {
-        publication.comments.splice(commentIndex, 1);
+    if (commentIndex !== -1) {
+      publication.comments.splice(commentIndex, 1);
 
-        await publication.save();
-        res.status(200).json({ message: "Comentário deletado com sucesso" });
-      }
-    } catch (error) {
-      console.log(error);
+      await publication.save();
+      res.status(200).json({ message: "Comentário deletado com sucesso" });
     }
   }
 );
@@ -144,106 +141,84 @@ app.delete(
 app.get("/publications/:publicationId/comments", async (req, res) => {
   const { publicationId } = req.params;
 
-  try {
-    const publication = await Publication.findOne({
-      _id: publicationId,
-    }).populate("comments.owner"); // Popula dados do dono do comentário
+  const publication = await Publication.findOne({
+    _id: publicationId,
+  }).populate("comments.owner"); // Popula dados do dono do comentário
 
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    res.status(200).json({ comments: publication.comments });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  if (!publication) {
+    return res.status(404).json({ message: "Publicação não encontrada" });
   }
+
+  res.status(200).json({ comments: publication.comments });
 });
 
 // Rota para adicionar comentários (POST RESTful)
 app.post("/publications/:publicationId/comments", async (req, res) => {
-  try {
-    const { user, comment } = req.body.data;
-    const { publicationId } = req.params;
-    const publication = await Publication.findOne({ _id: publicationId });
+  const { user, comment } = req.body.data;
+  const { publicationId } = req.params;
+  const publication = await Publication.findOne({ _id: publicationId });
 
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    const newComment = {
-      owner: user,
-      comment: comment,
-      createdAt: Date.now(),
-    };
-
-    if (!user || !comment) {
-      return res.status(404).json({ message: "Comentário não pode ser vazio" });
-    }
-
-    publication.comments.push(newComment);
-
-    await publication.save();
-
-    res.status(200).json({ message: "Comentário adicionado com sucesso" });
-  } catch (error) {
-    console.log(error);
+  if (!publication) {
+    return res.status(404).json({ message: "Publicação não encontrada" });
   }
+
+  const newComment = {
+    owner: user,
+    comment: comment,
+    createdAt: Date.now(),
+  };
+
+  if (!user || !comment) {
+    return res.status(404).json({ message: "Comentário não pode ser vazio" });
+  }
+
+  publication.comments.push(newComment);
+
+  await publication.save();
+
+  res.status(200).json({ message: "Comentário adicionado com sucesso" });
 });
 
 // Rota para criar publicações com upload de imagem (POST RESTful)
 app.post("/publications", upload.single("image"), async (req, res) => {
-  try {
-    const { owner, title, description } = req.body;
-    const image = req.file ? req.file.path : null;
+  const { owner, title, description } = req.body;
+  const image = req.file ? req.file.path : null;
 
-    const newPublication = new Publication({
-      owner: owner, // ID do usuário dono
-      title: title,
-      description: description,
-      image: image,
-      comments: [], // Inicializa array vazio
-    });
+  const newPublication = new Publication({
+    owner: owner, // ID do usuário dono
+    title: title,
+    description: description,
+    image: image,
+    comments: [], // Inicializa array vazio
+  });
 
-    await newPublication.save();
+  await newPublication.save();
 
-    console.log("Dados recebidos:", { title, description, image });
-    res.status(200).json({ message: "Publicação recebida com sucesso!" });
-  } catch (error) {
-    console.error("Erro ao processar a publicação:", error);
-    res.status(500).json({ message: "Erro interno do servidor" });
-  }
+  console.log("Dados recebidos:", { title, description, image });
+  res.status(200).json({ message: "Publicação recebida com sucesso!" });
 });
 
 // Rota para deletar publicações (DELETE RESTful)
 app.delete("/publications/:publicationId", async (req, res) => {
-  try {
-    const { owner } = req.body;
-    const { publicationId } = req.params;
-    const publication = await Publication.findOneAndDelete({
-      _id: publicationId,
-    });
+  const { owner } = req.body;
+  const { publicationId } = req.params;
+  const publication = await Publication.findOneAndDelete({
+    _id: publicationId,
+  });
 
-    if (!publication) {
-      return res.status(404).json({ message: "Publicação não encontrada" });
-    }
-
-    res.status(200).json({ message: "Publicação deletada com sucesso" });
-  } catch (error) {
-    res.status(500).json({ error: error });
+  if (!publication) {
+    return res.status(404).json({ message: "Publicação não encontrada" });
   }
+
+  res.status(200).json({ message: "Publicação deletada com sucesso" });
 });
 
 // Rota para buscar todas publicações (GET RESTful)
 app.get("/publications", async (req, res) => {
-  try {
-    const publications = await Publication.find()
-      .populate("owner") // Popula dados do dono
-      .populate("comments.owner"); // Popula donos dos comentários
-    res.json(publications);
-  } catch (error) {
-    console.error("Erro ao buscar publicações:", error);
-    res.status(500).json({ message: "Erro interno do servidor" });
-  }
+  const publications = await Publication.find()
+    .populate("owner") // Popula dados do dono
+    .populate("comments.owner"); // Popula donos dos comentários
+  res.json(publications);
 });
 
 // Rota para editar publicação (PUT RESTful)
@@ -251,264 +226,226 @@ app.put(
   "/publications/:publicationId",
   upload.single("image"),
   async (req, res) => {
-    try {
-      const { owner, title, description } = req.body;
-      const { publicationId } = req.params;
+    const { owner, title, description } = req.body;
+    const { publicationId } = req.params;
 
-      let imagePath = null;
+    let imagePath = null;
 
-      if (req.file) {
-        imagePath = req.file.path; // Atualiza imagem se fornecida
-      }
-
-      const publication = await Publication.findById({ _id: publicationId });
-
-      if (!publication) {
-        return res.status(404).json({ message: "Publicação não encontrada" });
-      }
-
-      if (title.replaceAll(" ", "") != "" && title != null) {
-        publication.title = title;
-      } else {
-        return res.status(404).json({ message: "Título não pode ser vazio" });
-      }
-
-      if (description.replaceAll(" ", "") != "" && description != null) {
-        publication.description = description;
-      } else {
-        return res
-          .status(404)
-          .json({ message: "Descrição não pode ser vazia" });
-      }
-
-      if (imagePath) {
-        publication.image = imagePath;
-      } else if (imagePath == null) {
-        publication.image = null;
-      }
-
-      await publication.save();
-
-      res.status(200).json({
-        message: "Publicação editada com sucesso",
-        publication: publication,
-      });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
+    if (req.file) {
+      imagePath = req.file.path; // Atualiza imagem se fornecida
     }
+
+    const publication = await Publication.findById({ _id: publicationId });
+
+    if (!publication) {
+      return res.status(404).json({ message: "Publicação não encontrada" });
+    }
+
+    if (title.replaceAll(" ", "") != "" && title != null) {
+      publication.title = title;
+    } else {
+      return res.status(404).json({ message: "Título não pode ser vazio" });
+    }
+
+    if (description.replaceAll(" ", "") != "" && description != null) {
+      publication.description = description;
+    } else {
+      return res.status(404).json({ message: "Descrição não pode ser vazia" });
+    }
+
+    if (imagePath) {
+      publication.image = imagePath;
+    } else if (imagePath == null) {
+      publication.image = null;
+    }
+
+    await publication.save();
+
+    res.status(200).json({
+      message: "Publicação editada com sucesso",
+      publication: publication,
+    });
   }
 );
 
 // Rota para obter publicações de um usuário específico (GET RESTful)
 app.get("/users/:userId/publications", async (req, res) => {
-  try {
-    const { userId } = req.params;
+  const { userId } = req.params;
 
-    const user = await User.findById(userId);
+  const user = await User.findById(userId);
 
-    if (!user) {
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    }
-
-    const userPosts = await Publication.find({ owner: userId })
-      .populate("comments.owner")
-      .populate("owner");
-
-    res.status(200).json({
-      message: "Posts obtidos com sucesso",
-      posts: userPosts,
-      user: user,
-    });
-  } catch (error) {
-    console.log(error);
+  if (!user) {
+    return res.status(404).json({ message: "Usuário não encontrado" });
   }
+
+  const userPosts = await Publication.find({ owner: userId })
+    .populate("comments.owner")
+    .populate("owner");
+
+  res.status(200).json({
+    message: "Posts obtidos com sucesso",
+    posts: userPosts,
+    user: user,
+  });
 });
 
 // Rota de login (POST)
 app.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
 
-    const user = await User.findOne({ email: email });
+  const user = await User.findOne({ email: email });
 
-    if (!user) {
-      return res.status(404).json({ message: "Esse usuário não existe." });
-    }
-
-    const isPasswordValid = await verifyPassword(password, user.password);
-
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "Senha incorreta" });
-    }
-
-    const userWithoutPassword = { ...user.toObject() };
-    delete userWithoutPassword.password; // Remove senha da resposta
-
-    res.status(200).json({
-      message: "Login realizado com sucesso!",
-      user: userWithoutPassword,
-    });
-  } catch (error) {
-    console.error("Erro ao processar o login:", error);
-    res.status(500).json({ message: "Erro interno do servidor" });
+  if (!user) {
+    return res.status(404).json({ message: "Esse usuário não existe." });
   }
+
+  const isPasswordValid = await verifyPassword(password, user.password);
+
+  if (!isPasswordValid) {
+    return res.status(401).json({ message: "Senha incorreta" });
+  }
+
+  const userWithoutPassword = { ...user.toObject() };
+  delete userWithoutPassword.password; // Remove senha da resposta
+
+  res.status(200).json({
+    message: "Login realizado com sucesso!",
+    user: userWithoutPassword,
+  });
 });
 
 // Rota de cadastro (POST)
 app.post("/signup", async (req, res) => {
-  try {
-    const { user, email, password } = req.body;
+  const { user, email, password } = req.body;
 
-    // Verifica existência prévia
-    const emailExists = await User.findOne({ email: email });
-    const userExists = await User.findOne({ name: user });
+  // Verifica existência prévia
+  const emailExists = await User.findOne({ email: email });
+  const userExists = await User.findOne({ name: user });
 
-    if (emailExists && userExists) {
-      return res.json({
-        message: "Este nome de usuário e e-mail já estão em uso.",
-      });
-    } else if (emailExists && !userExists) {
-      return res.json({ message: "Esse e-mail já está em uso." });
-    } else if (!emailExists && userExists) {
-      return res.json({ message: "Esse nome de usuário já está em uso." });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      name: user,
-      email: email,
-      password: hashedPassword, // Senha hasheada
+  if (emailExists && userExists) {
+    return res.json({
+      message: "Este nome de usuário e e-mail já estão em uso.",
     });
-
-    await newUser.save();
-    res
-      .status(200)
-      .json({ message: "Usuário criado com sucesso!", user: newUser });
-  } catch (error) {
-    if (error.code == 11000) {
-      res.status(409).json({
-        message:
-          "Alguma informação enviada já existe em outro usuário já existe!",
-      });
-    } else {
-      res.status(500).json({ message: "Erro interno do servidor:", error });
-    }
+  } else if (emailExists && !userExists) {
+    return res.json({ message: "Esse e-mail já está em uso." });
+  } else if (!emailExists && userExists) {
+    return res.json({ message: "Esse nome de usuário já está em uso." });
   }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const newUser = new User({
+    name: user,
+    email: email,
+    password: hashedPassword, // Senha hasheada
+  });
+
+  await newUser.save();
+  res
+    .status(200)
+    .json({ message: "Usuário criado com sucesso!", user: newUser });
 });
 
 // Rota para editar perfil (PUT RESTful)
 app.put("/users/:userId", upload.single("image"), async (req, res) => {
-  try {
-    const { name, email } = req.body;
-    const { userId } = req.params;
+  const { name, email } = req.body;
+  const { userId } = req.params;
 
-    const image = req.file ? req.file.path : null;
+  const image = req.file ? req.file.path : null;
 
-    const user = await User.findById({ _id: userId });
+  const user = await User.findById({ _id: userId });
 
-    if (!user) {
-      res.status(500).json({ message: "Usuário não encontrado" });
-    }
-
-    if (name != null && name.replaceAll(" ", "") != "") {
-      user.name = name;
-    }
-
-    if (email != null && email.replaceAll(" ", "") != "") {
-      user.email = email;
-    }
-
-    if (image != null && image != "") {
-      user.image = image;
-    }
-
-    await user.save();
-
-    res
-      .status(200)
-      .json({ message: "Perfil editado com sucesso!", user: user });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Erro interno do servidor:", error: error });
+  if (!user) {
+    res.status(500).json({ message: "Usuário não encontrado" });
   }
+
+  if (name != null && name.replaceAll(" ", "") != "") {
+    user.name = name;
+  }
+
+  if (email != null && email.replaceAll(" ", "") != "") {
+    user.email = email;
+  }
+
+  if (image != null && image != "") {
+    user.image = image;
+  }
+
+  await user.save();
+
+  res.status(200).json({ message: "Perfil editado com sucesso!", user: user });
 });
 
 // Rota para editar página do usuário (PUT RESTful)
 app.put("/users/:userId/userPage", upload.single("image"), async (req, res) => {
-  try {
-    const { description } = req.body;
-    const { userId } = req.params;
+  const { description } = req.body;
+  const { userId } = req.params;
 
-    const image = req.file ? req.file.path : null;
+  const image = req.file ? req.file.path : null;
 
-    const user = await User.findById({ _id: userId });
+  const user = await User.findById({ _id: userId });
 
-    if (!user) {
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    }
-
-    if (description != null && description.replaceAll(" ", "") != "") {
-      user.userPageDescription = description;
-    }
-
-    if (image != null && image != "") {
-      user.userPageImage = image;
-    }
-
-    await user.save();
-
-    return res
-      .status(200)
-      .json({ message: "Perfil editado com sucesso!", user: user });
-  } catch (error) {
-    res.status(500).json({ message: "Erro interno do servidor:", error });
+  if (!user) {
+    return res.status(404).json({ message: "Usuário não encontrado" });
   }
+
+  if (description != null && description.replaceAll(" ", "") != "") {
+    user.userPageDescription = description;
+  }
+
+  if (image != null && image != "") {
+    user.userPageImage = image;
+  }
+
+  await user.save();
+
+  return res
+    .status(200)
+    .json({ message: "Perfil editado com sucesso!", user: user });
 });
 
 // Rota para alterar senha (PUT RESTful)
 app.put("/users/:userId/password", async (req, res) => {
-  try {
-    const { newPassword, oldPassword } = req.body;
-    const { userId } = req.params;
+  const { newPassword, oldPassword } = req.body;
+  const { userId } = req.params;
 
-    const user = await User.findById(userId);
+  const user = await User.findById(userId);
 
-    if (!user) {
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    }
-
-    const samePassword = await verifyPassword(oldPassword, user.password);
-
-    if (samePassword) {
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      user.password = hashedPassword;
-      await user.save();
-      return res.status(200).json({ message: "Senha alterada com sucesso" });
-    }
-
-    return res.status(401).json({ message: "Senha incorreta" });
-  } catch (error) {
-    console.log(error);
+  if (!user) {
+    return res.status(404).json({ message: "Usuário não encontrado" });
   }
+
+  const samePassword = await verifyPassword(oldPassword, user.password);
+
+  if (samePassword) {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+    return res.status(200).json({ message: "Senha alterada com sucesso" });
+  }
+
+  return res.status(401).json({ message: "Senha incorreta" });
 });
 
 // Rota para obter informações do usuário (GET RESTful)
 app.get("/users/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
+  const { userId } = req.params;
 
-    const user = await User.findById(userId);
+  const user = await User.findById(userId);
 
-    if (!user) {
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    }
-
-    res.status(200).json({ user: user });
-  } catch (error) {
-    console.log(error);
+  if (!user) {
+    return res.status(404).json({ message: "Usuário não encontrado" });
   }
+
+  res.status(200).json({ user: user });
+});
+
+app.use((error, req, res, next) => {
+  console.error(error);
+  res.status(500).json({
+    message: "Ocorreu um erro interno no servidor",
+    error: process.env.NODE_ENV === "development" ? error.message : "Oculto",
+  });
 });
 
 // Inicia o servidor
