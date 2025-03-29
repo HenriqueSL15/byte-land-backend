@@ -1,6 +1,6 @@
 const express = require("express");
 require("express-async-errors");
-const { body, param, validationResult } = require("express-validator");
+const { body, param, query, validationResult } = require("express-validator");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
@@ -198,7 +198,7 @@ app.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { user, comment } = req.body.data;
+    const { user, comment } = req.body;
     const { publicationId } = req.params;
     const publication = await Publication.findOne({ _id: publicationId });
 
@@ -271,10 +271,10 @@ app.post(
 
 // Rota para deletar publicações (DELETE RESTful)
 app.delete(
-  "/publications/:publicationId",
+  "/publications/:publicationId?",
   [
     param("publicationId").isMongoId().withMessage("ID de publicação inválido"),
-    body("owner").isMongoId().withMessage("ID de usuário inválido"),
+    query("owner").isMongoId().withMessage("ID de usuário inválido"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -282,7 +282,7 @@ app.delete(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { owner } = req.body;
+    const { owner } = req.query;
     const { publicationId } = req.params;
     const publication = await Publication.findOneAndDelete({
       _id: publicationId,
@@ -308,6 +308,7 @@ app.get("/publications", async (req, res) => {
 // Rota para editar publicação (PUT RESTful)
 app.put(
   "/publications/:publicationId",
+  upload.single("image"),
   [
     param("publicationId").isMongoId().withMessage("ID de publicação inválido"),
     body("owner").isMongoId().withMessage("ID de usuário inválido"),
@@ -322,16 +323,18 @@ app.put(
       .notEmpty()
       .withMessage("Descrição não pode ser vazia"),
   ],
-  upload.single("image"),
+
   async (req, res) => {
     const errors = validationResult(req);
+
     if (!errors.isEmpty()) {
+      console.log("erros", errors);
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { owner, title, description } = req.body;
     const { publicationId } = req.params;
-
+    console.log(owner, title, description, publicationId);
     let imagePath = null;
 
     if (req.file) {
@@ -339,7 +342,7 @@ app.put(
     }
 
     const publication = await Publication.findById({ _id: publicationId });
-
+    console.log(publication);
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
     }
@@ -353,7 +356,7 @@ app.put(
     } else if (imagePath == null) {
       publication.image = null;
     }
-
+    // console.log(publication);
     await publication.save();
 
     res.status(200).json({
@@ -512,11 +515,12 @@ app.put(
   [
     param("userId").isMongoId().withMessage("ID de usuário inválido"),
     body("name")
+      .optional()
       .isString()
       .trim()
       .notEmpty()
       .withMessage("Nome de usuário não pode ser vazio"),
-    body("email").isEmail().withMessage("Email inválido"),
+    body("email").optional().isEmail().withMessage("Email inválido"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
