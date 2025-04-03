@@ -6,6 +6,7 @@ const multer = require("multer");
 const path = require("path");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const { type } = require("os");
 require("dotenv").config();
 const app = express();
 const port = 3000;
@@ -35,6 +36,14 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now(), // Data de criação automática
   },
+  notifications: [
+    {
+      message: { type: String, required: true },
+      read: { type: Boolean, default: false },
+      createdAt: { type: Date, default: Date.now },
+      owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+  ],
 });
 
 // Modelo do usuário (interface com a coleção 'users')
@@ -119,6 +128,55 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.send("Backend rodando!");
 });
+
+app.get(
+  "/users/:userId/notifications",
+  [param("userId").isMongoId().withMessage("ID de usuário inválido")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId } = req.params;
+
+    const user = await User.findById(userId).populate("notifications.owner");
+
+    return res.status(200).json({ notifications: user.notifications });
+  }
+);
+
+app.post(
+  "/users/:userId/notifications",
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    body("message").notEmpty().withMessage("Mensagem é obrigatória"),
+    body("owner").isMongoId().withMessage("ID de proprietário inválido"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId } = req.params;
+    const { message } = req.body;
+    const { owner } = req.body;
+
+    const user = await User.findById(userId).populate("notifications.owner");
+
+    user.notifications.push({
+      message,
+      owner,
+      read: false,
+      createdAt: Date.now(),
+    });
+
+    await user.save();
+
+    return res.status(201).json({ message: "Notificação enviada com sucesso" });
+  }
+);
 
 // Rota para deletar comentários específicos (DELETE RESTful)
 app.delete(
@@ -334,15 +392,13 @@ app.put(
 
     const { owner, title, description } = req.body;
     const { publicationId } = req.params;
-    console.log(owner, title, description, publicationId);
-    let imagePath = null;
 
+    let imagePath = null;
     if (req.file) {
       imagePath = req.file.path; // Atualiza imagem se fornecida
     }
 
     const publication = await Publication.findById({ _id: publicationId });
-    console.log(publication);
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
     }
@@ -356,7 +412,6 @@ app.put(
     } else if (imagePath == null) {
       publication.image = null;
     }
-    // console.log(publication);
     await publication.save();
 
     res.status(200).json({
@@ -565,11 +620,7 @@ app.put(
   upload.single("image"),
   [
     param("userId").isMongoId().withMessage("ID de usuário inválido"),
-    body("description")
-      .isString()
-      .trim()
-      .notEmpty()
-      .withMessage("Descrição não pode ser vazia"),
+    body("description").optional().isString().trim(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
