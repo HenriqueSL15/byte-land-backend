@@ -9,7 +9,9 @@ const bcrypt = require("bcryptjs");
 const { type } = require("os");
 require("dotenv").config();
 const app = express();
+const jwt = require("jsonwebtoken");
 const port = 3000;
+const autenticar = require("./auth.js");
 
 // String de conexão com o MongoDB Atlas (substitua com suas credenciais)
 const uri = process.env.MONGODB_URI;
@@ -489,6 +491,21 @@ app.post(
       return res.status(401).json({ message: "Senha incorreta" });
     }
 
+    //Gera o token JWT
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    // Configura o cookie HTTP-onlyu
+    res.cookie("access_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000, // 15 minutos (15 min x 60 seg x 1000 ms)
+    });
+
     const userWithoutPassword = { ...user.toObject() };
     delete userWithoutPassword.password; // Remove senha da resposta
 
@@ -563,10 +580,16 @@ app.post(
   }
 );
 
+app.post("/logout", (req, res) => {
+  res.clearCookie("access_token");
+  res.status(200).json({ message: "Logout realizado com sucesso!" });
+});
+
 // Rota para editar perfil (PUT RESTful)
 app.put(
   "/users/:userId",
   upload.single("image"),
+
   [
     param("userId").isMongoId().withMessage("ID de usuário inválido"),
     body("name")
@@ -723,6 +746,10 @@ app.get(
     res.status(200).json({ user: user });
   }
 );
+
+app.get("/api/check-auth", autenticar, (req, res) => {
+  res.status(200).json({ isAuthenticated: true, user: req.user });
+});
 
 app.use((error, req, res, next) => {
   console.error(error);
