@@ -9,9 +9,7 @@ const bcrypt = require("bcryptjs");
 const { type } = require("os");
 require("dotenv").config();
 const app = express();
-const jwt = require("jsonwebtoken");
 const port = 3000;
-const autenticar = require("./auth.js");
 
 // String de conexão com o MongoDB Atlas (substitua com suas credenciais)
 const uri = process.env.MONGODB_URI;
@@ -88,7 +86,7 @@ mongoose
 app.use(
   cors({
     origin: "http://localhost:5173", // Permite apenas este domínio
-    methods: ["GET", "POST", "PUT", "DELETE"], // Métodos permitidos
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Métodos permitidos
     allowedHeaders: ["Content-Type", "Authorization"], // Cabeçalhos permitidos
   })
 );
@@ -162,8 +160,7 @@ app.post(
     }
 
     const { userId } = req.params;
-    const { message } = req.body;
-    const { owner } = req.body;
+    const { message, owner } = req.body;
 
     const user = await User.findById(userId).populate("notifications.owner");
 
@@ -283,6 +280,29 @@ app.post(
     res.status(200).json({ message: "Comentário adicionado com sucesso" });
   }
 );
+
+app.patch("/users/:userId/notifications/mark-as-read", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).populate("notifications.owner");
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    user.notifications.forEach((notification) => {
+      notification.read = true;
+    });
+
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ message: "Notificações marcadas como lidas" });
+  } catch (error) {
+    console.log(error);
+  }
+});
 
 // Rota para criar publicações com upload de imagem (POST RESTful)
 app.post(
@@ -491,21 +511,6 @@ app.post(
       return res.status(401).json({ message: "Senha incorreta" });
     }
 
-    //Gera o token JWT
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" }
-    );
-
-    // Configura o cookie HTTP-onlyu
-    res.cookie("access_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 15 * 60 * 1000, // 15 minutos (15 min x 60 seg x 1000 ms)
-    });
-
     const userWithoutPassword = { ...user.toObject() };
     delete userWithoutPassword.password; // Remove senha da resposta
 
@@ -580,16 +585,10 @@ app.post(
   }
 );
 
-app.post("/logout", (req, res) => {
-  res.clearCookie("access_token");
-  res.status(200).json({ message: "Logout realizado com sucesso!" });
-});
-
 // Rota para editar perfil (PUT RESTful)
 app.put(
   "/users/:userId",
   upload.single("image"),
-
   [
     param("userId").isMongoId().withMessage("ID de usuário inválido"),
     body("name")
@@ -746,10 +745,6 @@ app.get(
     res.status(200).json({ user: user });
   }
 );
-
-app.get("/api/check-auth", autenticar, (req, res) => {
-  res.status(200).json({ isAuthenticated: true, user: req.user });
-});
 
 app.use((error, req, res, next) => {
   console.error(error);
