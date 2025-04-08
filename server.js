@@ -6,68 +6,18 @@ const multer = require("multer");
 const path = require("path");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const { type } = require("os");
+
+const User = require("./models/User.js");
+const Publication = require("./models/Publication.js");
+const Message = require("./models/Message.js");
+const Conversation = require("./models/Conversation.js");
+
 require("dotenv").config();
 const app = express();
 const port = 3000;
 
 // String de conexão com o MongoDB Atlas (substitua com suas credenciais)
 const uri = process.env.MONGODB_URI;
-
-// Schema do usuário (define estrutura dos dados no MongoDB)
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true }, // Nome obrigatório e único
-  email: { type: String, required: true, unique: true }, // Email obrigatório e único
-  password: { type: String, required: true }, // Senha obrigatória
-  image: {
-    type: String,
-    default: "https://cdn-icons-png.flaticon.com/512/711/711769.png", // Imagem padrão
-  },
-  userPageImage: {
-    type: String,
-    default:
-      "https://www.solidbackgrounds.com/images/1920x1080/1920x1080-black-solid-color-background.jpg", // Banner padrão
-  },
-  userPageDescription: {
-    type: String,
-    default: "Nenhuma descrição", // Descrição inicial
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now(), // Data de criação automática
-  },
-  notifications: [
-    {
-      message: { type: String, required: true },
-      read: { type: Boolean, default: false },
-      createdAt: { type: Date, default: Date.now },
-      owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    },
-  ],
-});
-
-// Modelo do usuário (interface com a coleção 'users')
-const User = mongoose.model("User", userSchema);
-
-// Schema da publicação (relacionado ao usuário via ObjectId)
-const publicationSchema = new mongoose.Schema({
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // Dono da publicação
-  title: { type: String, required: true }, // Título obrigatório
-  description: { type: String, required: true }, // Descrição obrigatória
-  image: { type: String }, // Caminho da imagem (opcional)
-  createdAt: { type: Date, default: Date.now }, // Data de criação
-  comments: [
-    // Array de comentários
-    {
-      owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Dono do comentário
-      comment: String, // Texto do comentário
-      createdAt: { type: Date, default: Date.now }, // Data do comentário
-    },
-  ],
-});
-
-// Modelo da publicação (interface com a coleção 'publications')
-const Publication = mongoose.model("Publication", publicationSchema);
 
 // Conexão com o MongoDB Atlas
 mongoose
