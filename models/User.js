@@ -32,12 +32,17 @@ const userSchema = new mongoose.Schema({
   ],
   friends: [
     {
-      ID: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      createdAt: { type: Data, default: Date.now },
+      user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      createdAt: { type: Date, default: Date.now },
       status: {
         type: String,
         enum: ["pending", "accepted", "rejected"],
         default: "pending",
+      },
+      sender: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
       },
     },
   ],

@@ -684,6 +684,10 @@ app.get(
   "/users/:userId",
   [param("userId").isMongoId().withMessage("ID de usuário inválido")],
   async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
     const { userId } = req.params;
 
     const user = await User.findById(userId);
@@ -693,6 +697,123 @@ app.get(
     }
 
     res.status(200).json({ user: user });
+  }
+);
+
+app.post(
+  "/users/:userId/friends/:friendId",
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    param("friendId").isMongoId().withMessage("ID de amigo inválido"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId, friendId } = req.params;
+
+    await User.findByIdAndUpdate(userId, {
+      $push: {
+        friends: {
+          user: friendId,
+          status: "pending",
+          sender: userId,
+        },
+      },
+    });
+
+    await User.findByIdAndUpdate(friendId, {
+      $push: {
+        friends: {
+          user: userId,
+          status: "pending",
+          sender: userId,
+        },
+      },
+    });
+
+    return res.status(200).json({ message: "Solicitação enviada" });
+  }
+);
+
+app.get(
+  "/users/:userId/friends",
+  [param("userId").isMongoId().withMessage("ID de usuário inválido")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId } = req.params;
+
+    const user = await User.findById(userId)
+      .populate("friends.user")
+      .populate("notifications.owner");
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    return res.status(200).json({ friends: user.friends });
+  }
+);
+
+app.patch(
+  "/users/:userId/friends/:friendId",
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    param("friendId").isMongoId().withMessage("ID de amigo inválido"),
+    body("status")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Status não pode ser vazio"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { status } = req.body;
+    const { userId, friendId } = req.params;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const friend = user.friends.find(
+      (friend) => friend.user._id.toString() === friendId
+    );
+    if (!friend) {
+      return res.status(404).json({ message: "Amigo não encontrado" });
+    }
+
+    friend.status = status;
+
+    const friendUser = await User.findById(friendId);
+
+    if (!friendUser) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const otherFriend = friendUser.friends.find(
+      (friend) => friend.user._id.toString() === userId
+    );
+
+    otherFriend.status = status;
+
+    console.log(otherFriend);
+
+    await user.save();
+    await friendUser.save();
+
+    return res.status(200).json({ message: "Status atualizado com sucesso" });
   }
 );
 
