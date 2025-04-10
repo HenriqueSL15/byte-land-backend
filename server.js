@@ -723,7 +723,7 @@ app.post(
         },
       },
     });
-
+    console.log(await User.findById(userId).friends);
     await User.findByIdAndUpdate(friendId, {
       $push: {
         friends: {
@@ -807,8 +807,6 @@ app.patch(
     );
 
     otherFriend.status = status;
-
-    console.log(otherFriend);
 
     await user.save();
     await friendUser.save();
