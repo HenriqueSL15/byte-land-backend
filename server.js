@@ -539,18 +539,10 @@ app.post(
 app.put(
   "/users/:userId",
   upload.single("image"),
-  [
-    param("userId").isMongoId().withMessage("ID de usuário inválido"),
-    body("name")
-      .optional()
-      .isString()
-      .trim()
-      .notEmpty()
-      .withMessage("Nome de usuário não pode ser vazio"),
-    body("email").optional().isEmail().withMessage("Email inválido"),
-  ],
+  [param("userId").isMongoId().withMessage("ID de usuário inválido")],
   async (req, res) => {
     const errors = validationResult(req);
+    console.log(errors.array());
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
@@ -559,6 +551,33 @@ app.put(
     const { userId } = req.params;
 
     const image = req.file ? req.file.path : null;
+
+    const validationErrors = [];
+
+    if (email !== undefined && email !== "") {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        validationErrors.push({
+          msg: "Email inválido",
+          param: "email",
+          value: email,
+        });
+      }
+    }
+    if (name !== undefined && name !== "" && typeof name !== "string") {
+      validationErrors.push({
+        msg: "Nome deve ser texto válido",
+        param: "name",
+        value: name,
+      });
+    }
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        message: "Dados inválidos",
+        errors: validationErrors,
+      });
+    }
 
     const user = await User.findById({ _id: userId });
 
@@ -580,7 +599,7 @@ app.put(
 
     await user.save();
 
-    res
+    return res
       .status(200)
       .json({ message: "Perfil editado com sucesso!", user: user });
   }
@@ -714,6 +733,21 @@ app.post(
 
     const { userId, friendId } = req.params;
 
+    const user = await User.findById(userId);
+    const friend = await User.findById(friendId);
+
+    if (!user || !friend) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const existingFriendship = user.friends.find(
+      (f) => f.user.toString() === friendId
+    );
+
+    if (existingFriendship) {
+      return res.status(409).json({ message: "Relação de amizade já existe" });
+    }
+
     await User.findByIdAndUpdate(userId, {
       $push: {
         friends: {
@@ -723,7 +757,7 @@ app.post(
         },
       },
     });
-    console.log(await User.findById(userId).friends);
+
     await User.findByIdAndUpdate(friendId, {
       $push: {
         friends: {
@@ -812,6 +846,46 @@ app.patch(
     await friendUser.save();
 
     return res.status(200).json({ message: "Status atualizado com sucesso" });
+  }
+);
+
+app.delete(
+  "/users/:userId/friends/:friendId",
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    param("friendId").isMongoId().withMessage("ID de amigo inválido"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId, friendId } = req.params;
+
+    // Verificar se os usuários existem
+    const user = await User.findById(userId);
+    const friend = await User.findById(friendId);
+
+    if (!user || !friend) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    // Remover a amizade do usuário
+    await User.findByIdAndUpdate(userId, {
+      $pull: {
+        friends: { user: friendId },
+      },
+    });
+
+    // Remover a amizade do amigo
+    await User.findByIdAndUpdate(friendId, {
+      $pull: {
+        friends: { user: userId },
+      },
+    });
+
+    return res.status(200).json({ message: "Amizade removida com sucesso" });
   }
 );
 
