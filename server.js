@@ -889,6 +889,55 @@ app.delete(
   }
 );
 
+app.get("/conversation/:userId/:friendId", async (req, res) => {
+  const { userId, friendId } = req.params;
+
+  //Verificara se já existe uma conversa entre os usuários
+  let conversation = await Conversation.findOne({
+    participants: { $all: [userId, friendId] },
+  });
+
+  if (!conversation) {
+    conversation = new Conversation({
+      participants: [userId, friendId],
+      lastMessage: { content: "" },
+    });
+    await conversation.save();
+  }
+
+  //Buscar mensagens da conversa
+  const messages = await Message.find({
+    conversation: conversation._id,
+  })
+    .sort({ createdAt: 1 })
+    .populate("sender");
+
+  res.status(200).json({ conversation, messages });
+});
+
+app.post("/conversations/:conversationId/message", async (req, res) => {
+  const { conversationId, senderId, content } = req.body;
+
+  const message = new Message({
+    conversation: conversationId,
+    sender: senderId,
+    content: content,
+  });
+
+  await message.save();
+
+  //Atualziar a última mensagem da conversa
+  await Conversation.findByIdAndUpdate(conversationId, {
+    lastMessage: {
+      content,
+      sender: senderId,
+      timestamp: new Date(),
+    },
+  });
+
+  res.status(201).json(message);
+});
+
 app.use((error, req, res, next) => {
   console.error(error);
 
