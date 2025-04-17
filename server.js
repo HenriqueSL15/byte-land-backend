@@ -996,4 +996,6 @@ app.use((error, req, res, next) => {
 });
 
 // Inicia o servidor
-module.exports = app;
+app.listen(port, () => {
+  console.log(`Servidor rodando em http://localhost:${port}`);
+});
