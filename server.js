@@ -35,7 +35,7 @@ mongoose
 // Configuração do CORS para permitir comunicação com o frontend
 app.use(
   cors({
-    origin: "https://byte-land.netlify.app", // Permite apenas este domínio
+    origin: ["https://byte-land.netlify.app", "http://localhost5173"], // Permite apenas este domínio
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Métodos permitidos
     allowedHeaders: ["Content-Type", "Authorization"], // Cabeçalhos permitidos
   })
