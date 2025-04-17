@@ -35,7 +35,7 @@ mongoose
 // Configuração do CORS para permitir comunicação com o frontend
 app.use(
   cors({
-    origin: "http://localhost:5173", // Permite apenas este domínio
+    origin: "https://byte-land.netlify.app", // Permite apenas este domínio
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Métodos permitidos
     allowedHeaders: ["Content-Type", "Authorization"], // Cabeçalhos permitidos
   })
@@ -889,54 +889,98 @@ app.delete(
   }
 );
 
-app.get("/conversation/:userId/:friendId", async (req, res) => {
-  const { userId, friendId } = req.params;
+app.get(
+  "/conversation/:userId/:friendId",
+  [
+    param("userId").isMongoId().withMessage("ID de usuário inválido"),
+    param("friendId").isMongoId().withMessage("ID de amigo inválido"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  //Verificara se já existe uma conversa entre os usuários
-  let conversation = await Conversation.findOne({
-    participants: { $all: [userId, friendId] },
-  });
+    const { userId, friendId } = req.params;
 
-  if (!conversation) {
-    conversation = new Conversation({
-      participants: [userId, friendId],
-      lastMessage: { content: "" },
+    //Verificara se já existe uma conversa entre os usuários
+    let conversation = await Conversation.findOne({
+      participants: { $all: [userId, friendId] },
     });
-    await conversation.save();
+
+    if (!conversation) {
+      conversation = new Conversation({
+        participants: [userId, friendId],
+        lastMessage: { content: "" },
+      });
+      await conversation.save();
+    }
+
+    //Buscar mensagens da conversa
+    const messages = await Message.find({
+      conversation: conversation._id,
+    })
+      .sort({ createdAt: 1 })
+      .populate("sender");
+
+    res.status(200).json({ conversation, messages });
   }
+);
 
-  //Buscar mensagens da conversa
-  const messages = await Message.find({
-    conversation: conversation._id,
-  })
-    .sort({ createdAt: 1 })
-    .populate("sender");
+app.post(
+  "/conversations/:conversationId/message",
+  [
+    body("conversationId").isMongoId().withMessage("ID de conversa inválido"),
+    body("senderId").isMongoId().withMessage("ID de usuário inválido"),
+    body("content")
+      .notEmpty()
+      .withMessage("Conteúdo da mensagem é obrigatório"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-  res.status(200).json({ conversation, messages });
-});
+    const { conversationId, senderId, content } = req.body;
 
-app.post("/conversations/:conversationId/message", async (req, res) => {
-  const { conversationId, senderId, content } = req.body;
-
-  const message = new Message({
-    conversation: conversationId,
-    sender: senderId,
-    content: content,
-  });
-
-  await message.save();
-
-  //Atualziar a última mensagem da conversa
-  await Conversation.findByIdAndUpdate(conversationId, {
-    lastMessage: {
-      content,
+    const message = new Message({
+      conversation: conversationId,
       sender: senderId,
-      timestamp: new Date(),
-    },
-  });
+      content: content,
+    });
 
-  res.status(201).json(message);
-});
+    await message.save();
+
+    //Atualziar a última mensagem da conversa
+    await Conversation.findByIdAndUpdate(conversationId, {
+      lastMessage: {
+        content,
+        sender: senderId,
+        timestamp: new Date(),
+      },
+    });
+
+    res.status(201).json(message);
+  }
+);
+
+app.get(
+  "/users/:userId/random-users",
+  [param("userId").isMongoId().withMessage("ID de usuário inválido")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId } = req.params;
+
+    const allUsers = await User.find({ _id: { $ne: userId } }); // Exclui o usuário atual
+
+    res.status(200).json(allUsers);
+  }
+);
 
 app.use((error, req, res, next) => {
   console.error(error);
@@ -952,6 +996,4 @@ app.use((error, req, res, next) => {
 });
 
 // Inicia o servidor
-app.listen(port, () => {
-  console.log(`Servidor rodando em http://localhost:${port}`);
-});
+module.exports = app;
