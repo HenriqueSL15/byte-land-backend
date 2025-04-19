@@ -47,6 +47,7 @@ app.use(
 );
 
 // Função para verificar senha com bcrypt
+
 async function verifyPassword(password, hash) {
   const match = await bcrypt.compare(password, hash);
   return match;
