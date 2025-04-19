@@ -3,9 +3,11 @@ require("express-async-errors");
 const { body, param, query, validationResult } = require("express-validator");
 const cors = require("cors");
 const multer = require("multer");
-const path = require("path");
+
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const User = require("./models/User.js");
 const Publication = require("./models/Publication.js");
@@ -50,6 +52,13 @@ async function verifyPassword(password, hash) {
   return match;
 }
 
+// Configuarar Cloudinary com suas credenciais
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
@@ -59,20 +68,15 @@ const fileFilter = (req, file, cb) => {
 };
 
 // Configuração do Multer para upload de arquivos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Pasta onde as imagens serão salvas
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Nome único para o arquivo
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "byte-land",
+    allowed_formats: ["jpg", "jpeg", "png", "gif"],
   },
 });
 
 const upload = multer({ storage, fileFilter });
-
-// Disponibiliza a pasta 'uploads' como estática
-const uploadsPath = path.join(__dirname, "uploads");
-app.use("/uploads", express.static(uploadsPath));
 
 // Permite o uso de JSON nas requisições
 app.use(express.json());
