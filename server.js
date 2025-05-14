@@ -373,11 +373,6 @@ app.put(
     const { owner, title, description } = req.body;
     const { publicationId } = req.params;
 
-    let imagePath = null;
-    if (req.file) {
-      imagePath = req.file.path; // Atualiza imagem se fornecida
-    }
-
     const publication = await Publication.findById({ _id: publicationId });
     if (!publication) {
       return res.status(404).json({ message: "Publicação não encontrada" });
@@ -387,9 +382,9 @@ app.put(
 
     publication.description = description;
 
-    if (imagePath) {
-      publication.image = imagePath;
-    } else if (imagePath == null) {
+    if (req.file) {
+      publication.image = req.file.path;
+    } else if (req.body.removeImage === "true") {
       publication.image = null;
     }
     await publication.save();
